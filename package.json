@@ -1,0 +1,45 @@
+{
+  "name": "radar-on-intschool-skill",
+  "version": "1.1.0",
+  "description": "Radar on Intschool: a one-page IntSchool student radar report card skill for any subject teacher, tutor, coordinator or administrator.",
+  "type": "module",
+  "main": "index.js",
+  "exports": {
+    ".": "./index.js",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg"
+  },
+  "files": [
+    "index.js",
+    "cordis.patch.yml",
+    "skills",
+    "kit",
+    "locale",
+    "docs",
+    "icon.svg",
+    "README.md",
+    "icon-180.png"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "skill",
+    "education",
+    "report-card",
+    "intschool",
+    "radar",
+    "teacher"
+  ],
+  "author": "Taoyong Qu",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Tiger20240331/Intschool"
+  },
+  "homepage": "https://github.com/Tiger20240331/Intschool"
+}

@@ -1,0 +1,4 @@
+- insert:
+    - id: radar-on-intschool-skill
+      name: 'radar-on-intschool-skill'
+      config: {}

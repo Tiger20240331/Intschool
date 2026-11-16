@@ -1,0 +1,7 @@
+{
+  "meta": {
+    "title": "Radar on Intschool_Skill_v1.1",
+    "description": "Build a one-page IntSchool radar report card for any subject or role: course-level radar with task drill-down, weekly attribution and forecast, Top/Bottom/Missing tasks, a six-student triage queue, a class × task-type heat map, communication coverage, bilingual parent drafts (never sent), a printable student self-check, and a parent view without peer comparison. Includes the read-only collector, renderer, illustrated guide and configurable defaults; MIT licensed so colleagues can adapt and re-share.",
+    "detail": "docs/DETAIL.md"
+  }
+}

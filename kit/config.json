@@ -1,0 +1,18 @@
+{
+  "advisory_keywords": [
+    "Advisory"
+  ],
+  "exclude_keywords": [
+    "Meeting",
+    "Study Hall",
+    "Table Tennis",
+    "Club",
+    "CCA",
+    "Conference",
+    "Life Block",
+    "Department"
+  ],
+  "include_course_ids": [],
+  "exclude_course_ids": [],
+  "default_class": ""
+}
