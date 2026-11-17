@@ -1,6 +1,6 @@
 {
   "name": "radar-on-intschool-skill",
-  "version": "1.1.8",
+  "version": "1.1.9",
   "description": "Radar on Intschool: a one-page IntSchool student radar report card skill for any subject teacher, tutor, coordinator or administrator.",
   "type": "module",
   "main": "index.js",

@@ -467,6 +467,9 @@ th{background:var(--bg)}
 .wkBox .big{font-size:24px;font-weight:700;line-height:1.1;color:var(--blue)}
 .wkBox .big.pos{color:var(--green)} .wkBox .big.neg{color:var(--red)} .wkBox .big.muted{color:#9aa7b4}
 .wkBox .note{font-size:9px;color:#57606a;line-height:1.45}
+.typeSelWrap{margin:2px 0 4px}
+#typeSel{font-size:9px;padding:1px 4px;border:1px solid var(--line);border-radius:4px;max-width:100%}
+.tbar .tw{font-style:normal;color:#8b949e;font-size:7.5px;margin-left:2px}
 .wkInfo{cursor:help;color:#1f4e79;font-size:10px;margin-left:2px;border:1px solid #d6e0ea;border-radius:50%;padding:0 4px;background:#fff}
 .wkBox .chips{display:flex;flex-wrap:wrap;gap:4px;margin-top:4px}
 .wk{font-size:8.6px;border:1px solid #d6e0ea;border-radius:9px;padding:1px 6px;background:#fff;white-space:nowrap}
@@ -594,7 +597,7 @@ body.privacy .pname{filter:blur(0);}
 <script>
 const D = __DATA__;
 const COLORS = __COLORS__;
-let activeMetrics = ["Q1P"], current = null, privacy = false, parentView = false;
+let activeMetrics = ["Q1P"], current = null, privacy = false, parentView = false, typeCourse = '';
 const clsSel = document.getElementById('cls');
 (function buildClassSelect(){
   const all=document.createElement('option'); all.value=''; all.textContent='All classes 全部班级'; clsSel.appendChild(all);
@@ -653,7 +656,7 @@ function radar(st){
     const blockH=lines.length*lh+(zh[i]?17:0); const y0=ly-blockH/2+fs;
     let tsp=lines.map((t,li)=>'<tspan x="'+lx+'" y="'+(y0+li*lh)+'" font-size="'+fs+'">'+esc(t)+'</tspan>').join('');
     if(zh[i]) tsp+='<tspan x="'+lx+'" y="'+(y0+lines.length*lh)+'" font-size="12" fill="#6b7280">'+esc(zh[i])+'</tspan>';
-    return '<g class="axis" data-i="'+i+'" style="cursor:pointer"><circle cx="'+lx+'" cy="'+ly+'" r="'+(blockH/2+8)+'" fill="transparent"/>'+
+    return '<g class="axis" data-i="'+i+'" data-label="'+esc(axes[i])+'" style="cursor:pointer"><circle cx="'+lx+'" cy="'+ly+'" r="'+(blockH/2+8)+'" fill="transparent"/>'+
       '<line x1="'+cx+'" y1="'+cy+'" x2="'+x+'" y2="'+y+'" stroke="#c9d1d9"/><text text-anchor="middle">'+tsp+'</text></g>'}).join('');
   const poly=(arr,color,fill,w,dash)=>{const pts=arr.map((v,i)=>polar(cx,cy,R*((v==null?0:v)/100),i*2*Math.PI/N).join(',')).join(' ');
     return '<polygon points="'+pts+'" fill="'+fill+'" stroke="'+color+'" stroke-width="'+w+'"'+(dash?' stroke-dasharray="'+dash+'"':'')+'/>'};
@@ -909,6 +912,33 @@ function typeLabel(name){
   if(x.indexOf('swim')>=0) return 'Swim';
   return String(name).replace(/[^A-Za-z ]/g,'').trim().split(/\s+/)[0].slice(0,10) || 'Task';
 }
+function weightMapFor(course){
+  const out={};
+  const specific = course ? (D.courseWeights||{})[course] : null;
+  const src = specific ? {x:specific} : (D.courseWeights||{}); /* fall back to the school-wide palette */
+  Object.values(src).forEach(w=>Object.entries(w||{}).forEach(([name,pct])=>{
+    const k=typeLabel(name);
+    if(pct!=null) out[k]=Math.max(out[k]||0,pct);
+  }));
+  return out;
+}
+function typeRowsFor(st, course){
+  const now=Date.now();
+  const scored=flatTasks(st).filter(t=>t.end&&t.end<=now&&t.pct!=null&&(!course||t.lab===course));
+  const types={};
+  for(const t of scored){
+    rememberType(t.type);
+    const k=typeLabel(t.type);
+    const row=types[k]||(types[k]={pcts:[],ids:{}});
+    row.pcts.push(t.pct); if(t.id) row.ids[t.id]=1;
+  }
+  const cname=course?((st.sectionCourses||{})[course]||''):'';
+  const exact=!!(cname && (D.courseWeights||{})[cname]);
+  const wm=weightMapFor(cname);
+  return Object.entries(types).map(([k,v])=>({k:k,n:Math.max(1,Object.keys(v.ids).length),
+      m:Math.round(v.pcts.reduce((a,b)=>a+b,0)/v.pcts.length),w:wm[k]||0,exact:exact}))
+    .sort((a,b)=>(b.w-a.w)||(b.n-a.n));
+}
 function weekBlock(st){
   const w=weekStats(st);
   const sign=v=>(v>=0?'+':'')+v.toFixed(1);
@@ -924,9 +954,10 @@ function weekBlock(st){
     ? '<div class="big muted">—</div>'
     : (function(){const lo=Math.max(0,w.fc-w.band), hi=Math.min(100,w.fc+w.band);
         return '<div class="big">'+w.fc+'</div><div class="note">预测 '+st.summary.metric+' 区间 '+lo+'–'+hi+' · σ '+(w.sd==null?'—':w.sd.toFixed(1))+' ('+volTxt+')</div>';})()+ (w.fc<85?'<div class="note">距 A(85) 还差 '+(85-w.fc)+' 分</div>':'<div class="note">已在 A 线以上</div>');
-  const bars=w.types.map(t=>{
+  const rows=typeRowsFor(st, typeCourse);
+  const bars=rows.map(t=>{
     const full=TYPE_FULL[t.k]||t.k, col=typeColor({type:full});
-    return '<div class="tbar" title="'+esc(full)+' · '+t.n+' 项"><span class="tk2">'+t.k+'</span><span class="tb"><i style="width:'+t.m+'%;background:'+col+'"></i></span><span class="tv">'+t.m+'%</span><span class="tn">×'+t.n+'</span></div>';
+    return '<div class="tbar" title="'+esc(full)+' · '+t.n+' 项'+(t.exact&&t.w?' · 权重 '+t.w+'%':'')+'"><span class="tk2">'+t.k+((t.exact&&t.w)?'<i class="tw">'+t.w+'%</i>':'')+'</span><span class="tb"><i style="width:'+t.m+'%;background:'+col+'"></i></span><span class="tv">'+t.m+'%</span><span class="tn">×'+t.n+'</span></div>';
   }).join('');
   const attrTip='<b>变化归因 说明</b>'
     +'<div class="tx">比较窗口：前 7 天（'+d(now-14*864e5)+' → '+d(now-7*864e5)+'，'+w.n0+' 项）与近 7 天（'+d(now-7*864e5)+' → '+d(now)+'，'+w.n1+' 项）。</div>'
@@ -945,7 +976,10 @@ function weekBlock(st){
     '<div class="wkGrid">'+
       '<div class="wkBox"><h4>变化归因 Attribution <span class="wkInfo" data-tip="'+esc(attrTip)+'">ⓘ</span></h4>'+deltaHtml+'</div>'+
       '<div class="wkBox"><h4>稳定性与预测 Forecast <span class="wkInfo" data-tip="'+esc(fcTip)+'">ⓘ</span></h4>'+fcHtml+'</div>'+
-      '<div class="wkBox"><h4>按任务类型 By task type <span class="wkInfo" data-tip="'+esc(typeTip)+'">ⓘ</span></h4>'+(bars||'<div class="note">暂无已评分任务</div>')+'</div>'+
+      '<div class="wkBox"><h4>按任务类型 By task type <span class="wkInfo" data-tip="'+esc(typeTip)+'">ⓘ</span></h4>'+
+      '<div class="typeSelWrap"><select id="typeSel">'+['<option value="">全部科目 All subjects</option>']
+        .concat(st.labels.map(l=>'<option value="'+esc(l)+'"'+(l===typeCourse?' selected':'')+'>'+esc(l)+'</option>')).join('')+'</select></div>'+
+      (bars||'<div class="note">该科目暂无已评分任务</div>')+'</div>'+
     '</div></div>';
 }
 function missingRecent(st,days){
@@ -1181,6 +1215,7 @@ function openDraft(st,text){
   document.getElementById('draftPanel').style.display='block';
 }
 function renderCard(st){
+  if(typeCourse && st.labels.indexOf(typeCourse)<0) typeCourse='';
   const cov=m=>st.values[m].filter(v=>v!=null).length;
   if(activeMetrics.every(m=>cov(m)===0)){let best=null,bestN=0;D.metrics.forEach(m=>{const n=cov(m);if(n>bestN){bestN=n;best=m}});if(best){activeMetrics=[best];mBox.querySelectorAll('input').forEach(cb=>{cb.checked=(cb.value===best)})}}
   const head=activeMetrics.map((m,mi)=>'<span data-m="'+m+'" style="color:'+COLORS[mi%COLORS.length]+'">● '+m+'</span>').join(' ');
@@ -1240,6 +1275,8 @@ function renderCard(st){
       showTip('<b>'+m+' · all sections (score / class avg)</b><table><tr><th>Section</th><th>Score</th><th>Avg</th></tr>'+rows+'</table>');};
     el.onmousemove=moveTip; el.onmouseleave=hideTip;
   });
+  const ts=document.getElementById('typeSel');
+  if(ts) ts.onchange=()=>{typeCourse=ts.value; renderCard(st);};
   document.querySelectorAll('.tasks tr[data-id]').forEach(tr=>{
     const id=tr.getAttribute('data-id');
     tr.style.cursor='help';
@@ -1260,6 +1297,8 @@ function renderCard(st){
     el.onmousemove=moveTip; el.onmouseleave=hideTip;
   });
   document.querySelectorAll('#radarBox g.axis').forEach(g=>{
+    g.onclick=()=>{ typeCourse=g.getAttribute('data-label')||''; renderCard(st);
+      const wb=document.querySelector('.week'); if(wb) wb.scrollIntoView({behavior:'smooth',block:'center'}); };
     g.onmouseenter=ev=>showCourse(st,Number(g.dataset.i),ev);
     g.onmousemove=ev=>{const p=document.getElementById('hoverPanel');if(p.style.display!=='block')return;
       let x=ev.clientX+18,y=ev.clientY-30;const w=p.offsetWidth,h=p.offsetHeight;

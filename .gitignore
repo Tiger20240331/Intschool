@@ -1,0 +1,5 @@
+# Never commit student data, session tokens, or generated reports
+kit/data/*.json
+kit/output/*
+kit/token.txt
+!kit/data/.gitkeep
