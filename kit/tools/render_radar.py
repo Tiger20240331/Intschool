@@ -345,6 +345,11 @@ try:
 except Exception:
     _cfg = {}
 DEFAULT_COURSE = _cfg.get("default_class") or (COURSES[0]["name"] if COURSES else "")
+SIGNATURE = {
+    "name": _cfg.get("signature_name") or TEACHER,
+    "title": _cfg.get("signature_title") or "",
+    "phone": _cfg.get("signature_phone") or "",
+}
 COURSES.sort(key=lambda c: (0 if c["name"] == DEFAULT_COURSE else 1, -c["n"]))
 if DEFAULT_COURSE and not any(c["name"] == DEFAULT_COURSE for c in COURSES):
     DEFAULT_COURSE = COURSES[0]["name"] if COURSES else ""
@@ -352,7 +357,7 @@ if DEFAULT_COURSE and not any(c["name"] == DEFAULT_COURSE for c in COURSES):
 payload = {"metrics": METRICS, "rows": students, "taskMeta": (data.get("taskMeta") or {}),
            "courses": COURSES, "defaultCourse": DEFAULT_COURSE,
            "cohortMean": cohort_mean, "cohortN": cohort_n,
-           "generated": GENERATED, "teacher": TEACHER,
+           "generated": GENERATED, "teacher": TEACHER, "signature": SIGNATURE,
            "metricNote": {"Q1P": "Q1 进展", "Q1E": "Q1 期中", "Q1F": "Q1 最终（期中20%+平时80%）",
                           "Q2P": "Q2 进展", "Q2F": "Q2 最终", "S1P": "高中 S1 平时进展", "S1M": "高中 S1 期中总评"}}
 
@@ -655,9 +660,13 @@ function radar(st){
 function coursePanel(st,i){
   const lab=st.labels[i], zh=(st.labelZh||[])[i]||'', lv=(st.levels||[])[i]||'';
   const all=((st.sectionTasks||{})[lab])||[];
-  // newest first; every task of the term is kept so the list can be scrolled back to week 1
-  const rows=all.map((t,idx)=>({t:t,idx:idx})).sort((a,b)=>((b.t.end||0)-(a.t.end||0)));
-  const shown=rows;
+  // marked tasks that count towards the final score; newest first, scrollable back to week 1
+  const rows=all.filter(t=>{
+    if(t.pct==null) return false;
+    const meta=(D.taskMeta||{})[String(t.id)]||{};
+    return meta.it!==false;
+  }).map((t,idx)=>({t:t,idx:idx})).sort((a,b)=>((b.t.end||0)-(a.t.end||0)));
+  const shown=rows.slice(0,300);
   const W=Math.max(300,shown.length*24+40),H=200,padL=22,padR=6,top=24,bot=34;
   const bw=(W-padL-padR)/Math.max(1,shown.length), base=H-bot, h100=base-top;
   const scored=shown.filter(r=>r.t.pct!=null).map(r=>r.t.pct);
@@ -680,7 +689,7 @@ function coursePanel(st,i){
   });
   const showLv=lv&&!new RegExp('(^|[ .-])'+lv.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'$','i').test(lab);
   return '<div class="cpHead"><b>'+esc(lab)+'</b>'+(showLv?' <span class="lv">'+esc(lv)+'</span>':'')+(zh?' <span class="zh">'+esc(zh)+'</span>':'')+'</div>'+
-    '<div class="cpSub">共 '+shown.length+' 项 · 最新在左 · 左右滚动看更早'+(avg!=null?' · 均分 '+avg+'%':'')+' · 柱高=得分÷满分</div>'+
+    '<div class="cpSub">共 '+shown.length+' 项（已评分且计入总评）· 最新在左 · 左右滚动看更早'+(avg!=null?' · 均分 '+avg+'%':'')+'</div>'+
     '<div class="cpScroll"><svg width="'+W+'" height="'+H+'" viewBox="0 0 '+W+' '+H+'">'+grid+bars+'</svg></div>';
 }
 let hideTimer=null;
@@ -1106,9 +1115,11 @@ function parentDraft(st){
             '接下来我会：每周针对最弱板块做一次短时练习，并在下次测评后与您同步。']);
   out.push(['What would help at home: 15 minutes of focused review twice a week, and a quiet check that homework is submitted on time.',
             '家庭配合：每周两次、每次 15 分钟专注复习；督促作业按时提交。']);
-  out.push(['Happy to talk at any time.\n\nBest regards,\n'+D.teacher,
-            '随时联系我，谢谢！\n\n此致敬礼\n'+D.teacher]);
-  return out.map(p=>p[0]+'\n'+p[1]).join('\n\n');
+  const sig=D.signature||{};
+  const sigLine=(sig.name||D.teacher)+((sig.title)?', '+sig.title:'');
+  const closing=['Happy to talk at any time.','随时联系我，谢谢！','','Best regards,','此致敬礼','',sigLine]
+    .concat(sig.phone?[sig.phone]:[]).join('\n');
+  return out.map(p=>p[0]+'\n\n'+p[1]).join('\n\n')+'\n\n'+closing;
 }
 let draftStudent=null;
 function openDraft(st,text){

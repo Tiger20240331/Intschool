@@ -14,5 +14,8 @@
   ],
   "include_course_ids": [],
   "exclude_course_ids": [],
-  "default_class": "G7 Biology CPA"
+  "default_class": "",
+  "signature_name": "",
+  "signature_title": "",
+  "signature_phone": ""
 }
