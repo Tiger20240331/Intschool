@@ -419,7 +419,9 @@ th{background:var(--bg)}
 .tooltip .tm{color:#9db8d2}
 .tooltip .tx{margin-top:3px;color:#e6edf3}
 .tooltip .tk{margin-top:3px;color:#b7c6d4;font-size:9.5px}
-.hoverPanel{position:fixed;display:none;background:#fff;border:1px solid var(--line);border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.15);padding:8px 10px;z-index:98;font-size:10px;max-width:400px}
+.hoverPanel{position:fixed;display:none;background:#fff;border:1px solid var(--line);border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.15);padding:8px 10px;z-index:98;font-size:10px;max-width:420px}
+.cpScroll{overflow-x:auto;overflow-y:hidden;max-width:390px;padding-bottom:2px}
+.cpScroll svg{display:block}
 .hoverPanel table{font-size:9.3px}
 .hoverPanel .cpHead{font-size:11.5px;margin-bottom:1px}
 .hoverPanel .cpHead .zh{color:#6b7280;font-size:10px;margin-left:4px}
@@ -569,6 +571,7 @@ body.privacy .pname{filter:blur(0);}
   <div class="note">中英对照，只生成文字，不会发送；用“邮件 Mail”会在 Outlook 里打开待发邮件。</div>
   <div class="note" id="draftTo"></div>
   <textarea id="draftText" readonly></textarea>
+  <div class="note" id="draftStatus"></div>
   <div class="row">
     <button class="btn mini" id="draftCopy">复制 Copy</button>
     <button class="btn mini" id="draftMail">邮件 Mail（Outlook）</button>
@@ -652,18 +655,20 @@ function radar(st){
 function coursePanel(st,i){
   const lab=st.labels[i], zh=(st.labelZh||[])[i]||'', lv=(st.levels||[])[i]||'';
   const all=((st.sectionTasks||{})[lab])||[];
-  const rows=all.map((t,idx)=>({t:t,idx:idx})).sort((a,b)=>((a.t.end||0)-(b.t.end||0))).slice(-14);
-  const W=Math.max(320,rows.length*26+46),H=212,padL=26,padR=6,top=26,bot=44;
-  const bw=(W-padL-padR)/Math.max(1,rows.length), base=H-bot, h100=base-top;
-  const scored=rows.filter(r=>r.t.pct!=null).map(r=>r.t.pct);
+  // newest first; every task of the term is kept so the list can be scrolled back to week 1
+  const rows=all.map((t,idx)=>({t:t,idx:idx})).sort((a,b)=>((b.t.end||0)-(a.t.end||0)));
+  const shown=rows;
+  const W=Math.max(300,shown.length*24+40),H=200,padL=22,padR=6,top=24,bot=34;
+  const bw=(W-padL-padR)/Math.max(1,shown.length), base=H-bot, h100=base-top;
+  const scored=shown.filter(r=>r.t.pct!=null).map(r=>r.t.pct);
   const avg=scored.length?Math.round(scored.reduce((a,b)=>a+b,0)/scored.length):null;
   let grid='';
   [0,50,100].forEach(p=>{const y=base-h100*p/100;
     grid+='<line x1="'+padL+'" y1="'+y+'" x2="'+(W-padR)+'" y2="'+y+'" stroke="#e6ebf1"/>'+
           '<text x="'+(padL-4)+'" y="'+(y+3)+'" font-size="8" fill="#8b949e" text-anchor="end">'+p+'</text>';});
   let bars='';
-  rows.forEach((row,k)=>{
-    const t=row.t, x=padL+k*bw+3, w=Math.max(5,bw-6);
+  shown.forEach((row,k)=>{
+    const t=row.t, x=padL+k*bw+2, w=Math.max(4,bw-4);
     if(t.pct==null){
       bars+='<rect class="bar" data-i="'+row.idx+'" x="'+x+'" y="'+top+'" width="'+w+'" height="'+h100+'" fill="#fdf1f1" stroke="#e2a3a3" stroke-dasharray="2 3" stroke-width=".8"/>'+
         '<text x="'+(x+w/2)+'" y="'+(top+9)+'" font-size="8" fill="#c00000" text-anchor="middle">?</text>';
@@ -671,12 +676,12 @@ function coursePanel(st,i){
     }
     const h=Math.max(2,h100*t.pct/100);
     const col=t.pct>=85?'#1a7f37':t.pct>=70?'#7fb069':t.pct>=50?'#d0a215':'#c00000';
-    bars+='<rect class="bar" data-i="'+row.idx+'" x="'+x+'" y="'+(base-h)+'" width="'+w+'" height="'+h+'" fill="'+col+'" rx="1.5"/>';
+    bars+='<rect class="bar" data-i="'+row.idx+'" x="'+x+'" y="'+(base-h)+'" width="'+w+'" height="'+h+'" fill="'+col+'" rx="1"/>';
   });
   const showLv=lv&&!new RegExp('(^|[ .-])'+lv.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'$','i').test(lab);
   return '<div class="cpHead"><b>'+esc(lab)+'</b>'+(showLv?' <span class="lv">'+esc(lv)+'</span>':'')+(zh?' <span class="zh">'+esc(zh)+'</span>':'')+'</div>'+
-    '<div class="cpSub">最近 '+rows.length+' 项 · '+(avg!=null?'均分 '+avg+'% · ':'')+'柱高=得分÷满分 · 悬停柱子看任务说明</div>'+
-    '<svg width="'+W+'" height="'+H+'" viewBox="0 0 '+W+' '+H+'">'+grid+bars+'</svg>';
+    '<div class="cpSub">共 '+shown.length+' 项 · 最新在左 · 左右滚动看更早'+(avg!=null?' · 均分 '+avg+'%':'')+' · 柱高=得分÷满分</div>'+
+    '<div class="cpScroll"><svg width="'+W+'" height="'+H+'" viewBox="0 0 '+W+' '+H+'">'+grid+bars+'</svg></div>';
 }
 let hideTimer=null;
 function scheduleHide(){clearTimeout(hideTimer);hideTimer=setTimeout(()=>{document.getElementById('hoverPanel').style.display='none';hideTip();},200);}
@@ -1101,8 +1106,8 @@ function parentDraft(st){
             '接下来我会：每周针对最弱板块做一次短时练习，并在下次测评后与您同步。']);
   out.push(['What would help at home: 15 minutes of focused review twice a week, and a quiet check that homework is submitted on time.',
             '家庭配合：每周两次、每次 15 分钟专注复习；督促作业按时提交。']);
-  out.push(['Happy to talk at any time.', '随时联系我，谢谢！']);
-  out.push(['Best regards,\n'+D.teacher, D.teacher]);
+  out.push(['Happy to talk at any time.\n\nBest regards,\n'+D.teacher,
+            '随时联系我，谢谢！\n\n此致敬礼\n'+D.teacher]);
   return out.map(p=>p[0]+'\n'+p[1]).join('\n\n');
 }
 let draftStudent=null;
@@ -1197,12 +1202,30 @@ function setupActions(st){
   const selfBtn=document.getElementById('selfBtn'); if(selfBtn) selfBtn.onclick=()=>showSelf(st);
   document.getElementById('draftClose').onclick=()=>{dp.style.display='none';};
   document.getElementById('draftCopy').onclick=async()=>{const t=document.getElementById('draftText');await navigator.clipboard.writeText(t.value);};
-  document.getElementById('draftMail').onclick=()=>{
-    const st2=draftStudent||st, to=(st2.parents||[]).filter(Boolean).join(';');
-    if(!to){alert('没有找到家长邮箱。请在 IntSchool → Student List → Student Detail → Parent 中确认。');return;}
+  document.getElementById('draftMail').onclick=async()=>{
+    const st2=draftStudent||st, to=(st2.parents||[]).filter(Boolean);
+    const status=document.getElementById('draftStatus');
+    if(!to.length){alert('没有找到家长邮箱。请在 IntSchool → Student List → Student Detail → Parent 中确认。');return;}
     const subject='Student update · '+st2.name+' · '+st2.class;
     const body=document.getElementById('draftText').value;
-    location.href='ms-outlook://compose?to='+encodeURIComponent(to)+'&subject='+encodeURIComponent(subject)+'&body='+encodeURIComponent(body);
+    if(location.protocol.indexOf('http')===0){
+      status.textContent='正在 Outlook 里创建草稿…';
+      try{
+        const r=await fetch('/outlook-draft',{method:'POST',headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({to:to,subject:subject,body:body})});
+        const j=await r.json();
+        status.textContent = j.ok ? ('已在 Outlook 打开草稿（'+to.length+' 位收件人）') : ('创建失败：'+(j.error||'未知错误'));
+        status.style.color = j.ok ? '#1a7f37' : '#c00000';
+      }catch(e){ status.textContent='创建失败：'+e.message; status.style.color='#c00000'; }
+      return;
+    }
+    // file:// mode: no local bridge, download an Outlook-ready .eml
+    const eml=['To: '+to.join('; '),'Subject: '+subject,'MIME-Version: 1.0','Content-Type: text/plain; charset=utf-8','',''].join('\r\n')+body;
+    const a=document.createElement('a');
+    a.href=URL.createObjectURL(new Blob([eml],{type:'message/rfc822'}));
+    a.download='Radar_draft_'+st2.class+'.eml'; a.click();
+    status.textContent='已下载 .eml：双击用 Outlook 打开。用 3_start_live_report.command 打开本页可一键创建草稿。';
+    status.style.color='#b26a00';
   };
   document.getElementById('privacyBtn').onclick=()=>{privacy=!privacy;document.body.classList.toggle('privacy',privacy);if(current)renderCard(current);};
   const shareBtn=document.getElementById('shareBtn'), panel=document.getElementById('sharePanel');

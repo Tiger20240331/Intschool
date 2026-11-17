@@ -24,6 +24,21 @@ class Handler(SimpleHTTPRequestHandler):
                 self.end_headers(); return
         super().do_GET()
     def do_POST(self):
+        if self.path == "/outlook-draft":
+            try:
+                n = int(self.headers.get("Content-Length") or 0)
+                payload = json.loads(self.rfile.read(min(n, 200000)) or b"{}")
+                r = subprocess.run([sys.executable, os.path.join(KIT, "tools", "outlook_draft.py")],
+                                   input=json.dumps(payload, ensure_ascii=False),
+                                   capture_output=True, text=True, timeout=60)
+                out = (r.stdout or "").strip() or json.dumps({"ok": False, "error": (r.stderr or "no output")[-300:]})
+                self.send_response(200 if '"ok": true' in out else 500)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self.end_headers(); self.wfile.write(out.encode())
+            except Exception as e:
+                self.send_response(500); self.send_header("Content-Type", "application/json; charset=utf-8")
+                self.end_headers(); self.wfile.write(json.dumps({"ok": False, "error": str(e)[:300]}).encode())
+            return
         if self.path != "/refresh":
             self.send_response(404); self.end_headers(); return
         if not LOCK.acquire(blocking=False):

@@ -308,7 +308,7 @@ def main():
                     sec_tasks.sort(key=lambda x: x["end"] or 0)
                     out["sections"].append({"label": label, "group": group, "course": course,
                                             "flg": flg, "scores": scores,
-                                            "tasks": sec_tasks[-80:]})
+                                            "tasks": sec_tasks})
         except Exception as e:
             out["sections_error"] = str(e)[:80]
         try:
