@@ -355,6 +355,7 @@ if DEFAULT_COURSE and not any(c["name"] == DEFAULT_COURSE for c in COURSES):
     DEFAULT_COURSE = COURSES[0]["name"] if COURSES else ""
 
 payload = {"metrics": METRICS, "rows": students, "taskMeta": (data.get("taskMeta") or {}),
+           "taskTypes": (data.get("taskTypes") or []),
            "courses": COURSES, "defaultCourse": DEFAULT_COURSE,
            "cohortMean": cohort_mean, "cohortN": cohort_n,
            "generated": GENERATED, "teacher": TEACHER, "signature": SIGNATURE,
@@ -427,6 +428,9 @@ th{background:var(--bg)}
 .hoverPanel{position:fixed;display:none;background:#fff;border:1px solid var(--line);border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.15);padding:8px 10px;z-index:98;font-size:10px;max-width:420px}
 .cpScroll{overflow-x:auto;overflow-y:hidden;max-width:390px;padding-bottom:2px}
 .cpScroll svg{display:block}
+.cpLegend{display:flex;flex-wrap:wrap;gap:6px;margin-top:4px;font-size:8.5px;color:#57606a}
+.cpLegend .lg{display:flex;align-items:center;gap:3px}
+.cpLegend i{width:8px;height:8px;border-radius:2px;display:inline-block;border:1px solid rgba(0,0,0,.18)}
 .hoverPanel table{font-size:9.3px}
 .hoverPanel .cpHead{font-size:11.5px;margin-bottom:1px}
 .hoverPanel .cpHead .zh{color:#6b7280;font-size:10px;margin-left:4px}
@@ -657,15 +661,20 @@ function radar(st){
   return '<svg viewBox="0 0 '+W+' '+H+'" data-w="'+W+'" data-h="'+H+'" data-cx="'+cx+'" data-cy="'+cy+'" data-r="'+R+'">'+rings+ax+series+dots+'</svg>';
 }
 // ---- per-course gradebook chart (hover an axis label) ----
+function typeColor(t){
+  const pal=(D.taskTypes||[]).find(x=>x.name===t.type);
+  return (t.color) || (pal && pal.colour) || '#1f4e79';
+}
 function coursePanel(st,i){
   const lab=st.labels[i], zh=(st.labelZh||[])[i]||'', lv=(st.levels||[])[i]||'';
   const all=((st.sectionTasks||{})[lab])||[];
-  // marked tasks that count towards the final score; newest first, scrollable back to week 1
-  const rows=all.filter(t=>{
+  // keep the ORIGINAL index so a bar's tooltip is the task that bar draws
+  const rows=all.map((t,idx)=>({t:t,idx:idx})).filter(r=>{
+    const t=r.t;
     if(t.pct==null) return false;
     const meta=(D.taskMeta||{})[String(t.id)]||{};
     return meta.it!==false;
-  }).map((t,idx)=>({t:t,idx:idx})).sort((a,b)=>((b.t.end||0)-(a.t.end||0)));
+  }).sort((a,b)=>((b.t.end||0)-(a.t.end||0)));
   const shown=rows.slice(0,300);
   const W=Math.max(300,shown.length*24+40),H=200,padL=22,padR=6,top=24,bot=34;
   const bw=(W-padL-padR)/Math.max(1,shown.length), base=H-bot, h100=base-top;
@@ -684,13 +693,15 @@ function coursePanel(st,i){
       return;
     }
     const h=Math.max(2,h100*t.pct/100);
-    const col=t.pct>=85?'#1a7f37':t.pct>=70?'#7fb069':t.pct>=50?'#d0a215':'#c00000';
-    bars+='<rect class="bar" data-i="'+row.idx+'" x="'+x+'" y="'+(base-h)+'" width="'+w+'" height="'+h+'" fill="'+col+'" rx="1"/>';
+    bars+='<rect class="bar" data-i="'+row.idx+'" x="'+x+'" y="'+(base-h)+'" width="'+w+'" height="'+h+'" fill="'+typeColor(t)+'" stroke="rgba(0,0,0,.18)" stroke-width=".7" rx="1"/>';
   });
   const showLv=lv&&!new RegExp('(^|[ .-])'+lv.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'$','i').test(lab);
+  const used=[]; shown.forEach(r=>{ if(used.indexOf(r.t.type)<0) used.push(r.t.type); });
+  const legend=used.slice(0,6).map(tn=>'<span class="lg"><i style="background:'+typeColor({type:tn})+'"></i>'+esc(typeLabel(tn))+'</span>').join('');
   return '<div class="cpHead"><b>'+esc(lab)+'</b>'+(showLv?' <span class="lv">'+esc(lv)+'</span>':'')+(zh?' <span class="zh">'+esc(zh)+'</span>':'')+'</div>'+
     '<div class="cpSub">共 '+shown.length+' 项（已评分且计入总评）· 最新在左 · 左右滚动看更早'+(avg!=null?' · 均分 '+avg+'%':'')+'</div>'+
-    '<div class="cpScroll"><svg width="'+W+'" height="'+H+'" viewBox="0 0 '+W+' '+H+'">'+grid+bars+'</svg></div>';
+    '<div class="cpScroll"><svg width="'+W+'" height="'+H+'" viewBox="0 0 '+W+' '+H+'">'+grid+bars+'</svg></div>'+
+    '<div class="cpLegend">'+legend+'</div>';
 }
 let hideTimer=null;
 function scheduleHide(){clearTimeout(hideTimer);hideTimer=setTimeout(()=>{document.getElementById('hoverPanel').style.display='none';hideTip();},200);}

@@ -292,6 +292,7 @@ def main():
                         "name": (t.get("taskName") or "")[:120],
                         "abbr": t.get("abbr") or "",
                         "type": t.get("taskTypeName") or "",
+                        "color": t.get("color") or "",
                         "end": t.get("endDate") or 0,
                         "top": top,
                         "score": sc,
@@ -391,6 +392,19 @@ def main():
     if not students:
         print("没有取到任何学生数据。请确认该账号在 IntSchool 有任教班级，或检查 token 是否过期。")
         sys.exit(1)
+    # Task Weights palette: abbr, colour and weight per task type, as shown in the gradebook
+    palette = {}
+    for c in teaching:
+        try:
+            rules = get(f"/task-grade/rule?courseId={c['courseId']}&schoolYearId={year_id}", timeout=15)
+            for block in rules or []:
+                for r in block.get("rules") or []:
+                    name = r.get("taskType")
+                    if name and name not in palette:
+                        palette[name] = {"name": name, "abbr": r.get("abbr") or "",
+                                         "colour": r.get("colour") or "", "weight": r.get("percentage")}
+        except Exception as e:
+            print("任务类型调色板失败", c["name"], e)
     meta = {"teacherName": teacher_name, "schoolId": SCHOOL, "schoolYear": year.get("name"),
             "yearId": year_id, "studentCount": len(students), "generatedAt": dt.datetime.now().isoformat(),
             "teachingCourses": [c["name"] for c in teaching], "advisoryCount": len(advisory)}
@@ -431,7 +445,8 @@ def main():
         except Exception as e:
             print("任务缓存写入失败", e)
     print(f"任务说明缓存：{len(task_meta)} 条")
-    json.dump({"students": students, "taskMeta": task_meta},
+    json.dump({"students": students, "taskMeta": task_meta,
+               "taskTypes": list(palette.values())},
               open(os.path.join(DATA, "phase2.json"), "w", encoding="utf-8"), ensure_ascii=False)
     json.dump(means, open(os.path.join(DATA, "class_means.json"), "w", encoding="utf-8"), ensure_ascii=False, indent=1)
     json.dump(meta, open(os.path.join(DATA, "meta.json"), "w", encoding="utf-8"), ensure_ascii=False, indent=1)
