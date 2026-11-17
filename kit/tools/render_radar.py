@@ -81,6 +81,35 @@ def pick_metric(st):
         if any(v is not None for v in st["values"].get(m, [])): return m
     return "Q1P"
 
+PE_LABEL = re.compile(r"\bPE\b|physical education", re.I)
+PASS_MARKS = ("P", "PASS", "PASSED")
+
+
+def is_pe(sec):
+    return bool(PE_LABEL.search((sec.get("label") or "") + " " + (sec.get("group") or "")))
+
+
+def pass_marked(sec):
+    """A PE row on IntSchool records "P" (pass) instead of a percentage."""
+    return any((rec or {}).get("level", "").strip().upper() in PASS_MARKS
+               for rec in (sec.get("scores") or {}).values())
+
+
+def metric_value(sec, m):
+    rec = (sec.get("scores") or {}).get(m)
+    if rec:
+        if rec.get("pct") is not None:
+            return rec["pct"]
+        if (rec.get("level") or "").strip().upper() in PASS_MARKS:
+            return 100.0
+    # PE has no mid-term test: IntSchool leaves that column empty and only marks "P".
+    # Show 100% when the learner passed PE, and nothing when they did not.
+    if (m in ("Q1E", "Q2E") and is_pe(sec)
+            and any(k in (sec.get("scores") or {}) for k in ("Q1P", "Q1F", "Q2P"))):
+        return 100.0 if pass_marked(sec) else None
+    return None
+
+
 students = []
 for s in data["students"]:
     c = (s.get("courses") or [{}])[0]
@@ -111,7 +140,7 @@ for s in data["students"]:
     for m in METRICS:
         arr = []
         for l in labels:
-            sc = [x["scores"][m]["pct"] for x in secs if x["label"] == l and m in x["scores"]]
+            sc = [v for v in (metric_value(x, m) for x in secs if x["label"] == l) if v is not None]
             arr.append(round(sum(sc) / len(sc), 1) if sc else None)
         vals[m] = arr
     own = {}
@@ -1243,7 +1272,7 @@ function renderCard(st){
           const vals=st.values[m].filter(v=>v!=null);
           return '<td><b>'+(vals.length?Math.round(vals.reduce((a,b)=>a+b,0)/vals.length*10)/10:'—')+'</b></td>';
         }).join('')}</tr></tfoot></table>
-        <div class="note">${parentView?'<b>家长版：</b>只显示学生本人的分数与目标，不显示同伴对比。<br>每一项都可点开看任务证据。':'<b>分层：</b>G6–8 HF &gt; ECP &gt; CPA &gt; CP；G9 A1 &gt; A2 &gt; Main &gt; Basic；G10–12 AP &gt; ECP &gt; CP（英语 AP/ESL/EAL）。<br>初中学段按学科+分层出轴；高中按课程名出轴（同名课跨年级不等价）。<br>每项显示：分数 · 班级均分（avg）· 同班百分位（P）。'}</div>
+        <div class="note">${parentView?'<b>家长版：</b>只显示学生本人的分数与目标，不显示同伴对比。<br>每一项都可点开看任务证据。':'<b>分层：</b>G6–8 HF &gt; ECP &gt; CPA &gt; CP；G9 A1 &gt; A2 &gt; Main &gt; Basic；G10–12 AP &gt; ECP &gt; CP（英语 AP/ESL/EAL）。<br>初中学段按学科+分层出轴；高中按课程名出轴（同名课跨年级不等价）。<br>每项显示：分数 · 班级均分（avg）· 同班百分位（P）。<br>体育无期中考试：IntSchool 只记 P（通过），本页按 100% 计入期中列；没有 P 的显示 N/A。'}</div>
       </div>
     </div>
     ${weekBlock(st)}

@@ -279,9 +279,16 @@ def main():
                     continue
                 scores = {}
                 for cid, v in (it.get("customColumnScores") or {}).items():
-                    if not v or v.get("score") is None or v["score"] < 0:
+                    if not v:
                         continue
-                    scores[names.get(int(cid), str(cid))] = {"pct": v["score"], "level": v.get("level") or ""}
+                    level = (v.get("level") or "").strip()
+                    score = v.get("score")
+                    if score is None or score < 0:
+                        # PE records "P" (pass) instead of a percentage; keep the mark
+                        if level and level.upper() in ("P", "PASS", "PASSED"):
+                            scores[names.get(int(cid), str(cid))] = {"pct": None, "level": level}
+                        continue
+                    scores[names.get(int(cid), str(cid))] = {"pct": score, "level": level}
                 # task-level marks for the hover chart and the top/bottom/missing table
                 sec_tasks = []
                 for t in (it.get("taskScores") or []):
