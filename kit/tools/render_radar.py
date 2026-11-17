@@ -137,7 +137,7 @@ for s in data["students"]:
         "labelZh": [(zh_category(x) if grade >= 9 else zh_label(x)) for x in labels],
         "levels": [levels.get(x, "") for x in labels],
         "values": vals, "ownMean": own, "entries": entries, "also": [f"{x['label']} ({x['course']})" for x in dropped],
-        "sectionTasks": tasks, "taskTotals": s.get("tasks") or {},
+        "sectionTasks": tasks, "taskTotals": s.get("tasks") or {}, "parents": (c.get("parents") or []),
         "info": s.get("info") or {}, "lifeBlock": s.get("lifeBlock") or [],
         "_diary": {"positives": d.get("positives", 0), "concerns": d.get("concerns", 0),
                    "topPos": pos_types.most_common(3), "topInf": inf_types.most_common(3)},
@@ -227,6 +227,13 @@ def make_profile(st):
     if entered: facts.append(f"Enrolled since {entered}")
     facts.append("Boarding" if info.get("boarding") else "Day student")
     if info.get("advisory"): facts.append("Advisory · " + str(info["advisory"]))
+    if info.get("gender"): facts.append("Gender · " + str(info["gender"]))
+    if info.get("birthday"):
+        try:
+            import datetime as _dt
+            facts.append("DOB · " + _dt.datetime.fromtimestamp(info["birthday"] / 1000).strftime("%Y-%m-%d"))
+        except Exception:
+            pass
     if st["lifeBlock"]: facts.append("Life Block: " + "; ".join(st["lifeBlock"][:3]))
     total = tasks.get("total",0); graded = tasks.get("graded",0)
     if total:
@@ -468,6 +475,10 @@ th{background:var(--bg)}
 .heat td{text-align:center;padding:4px 3px;line-height:1.3;white-space:nowrap}
 .heat td.cn{text-align:left;white-space:normal}
 .heat .zz{color:#57606a;font-size:8px;display:block;font-weight:400;opacity:.85}
+.heat .na{color:#c9d1d9;text-align:center}
+.heat .num{text-align:right}
+.flag{color:#c00000;font-size:8px;margin-left:2px}
+.heat.pri td{white-space:normal;font-size:9px}
 .comms{font-size:10.5px;margin-top:6px}
 .comms td.num{text-align:right}
 .comms .tcourse{display:block;color:#8b949e;font-size:8px}
@@ -519,7 +530,7 @@ body.privacy .pname{filter:blur(0);}
   </div>
   <div class="actions">
     <button class="btn teacherOnly" id="queueBtn">本周队列 Queue</button>
-    <button class="btn teacherOnly" id="heatBtn">班级热力图 Heat map</button>
+    <button class="btn teacherOnly" id="heatBtn">教学优先 Priorities</button>
     <button class="btn teacherOnly" id="commsBtn">沟通 Comms</button>
     <button class="btn" id="selfBtn">学生自评页 Self-check</button>
     <button class="btn" id="draftBtn">家长草稿 Draft</button>
@@ -555,11 +566,12 @@ body.privacy .pname{filter:blur(0);}
 <div class="selfPanel" id="selfPanel"></div>
 <div class="draftPanel" id="draftPanel">
   <b>家长草稿 · Parent draft</b>
-  <div class="note">只生成文字，不会发送；核对措辞后复制到邮件 / 企业微信 / Teams。</div>
+  <div class="note">中英对照，只生成文字，不会发送；用“邮件 Mail”会在 Outlook 里打开待发邮件。</div>
+  <div class="note" id="draftTo"></div>
   <textarea id="draftText" readonly></textarea>
   <div class="row">
     <button class="btn mini" id="draftCopy">复制 Copy</button>
-    <button class="btn mini" id="draftMail">邮件 Mail</button>
+    <button class="btn mini" id="draftMail">邮件 Mail（Outlook）</button>
     <button class="btn mini" id="draftClose">关闭 Close</button>
   </div>
 </div>
@@ -831,20 +843,28 @@ function weekStats(st){
   const fc=m!=null?Math.round(Math.max(0,Math.min(100,m+drift*0.5))):null;
   const band=Math.max(5,Math.round((sd||0)*0.9));
   const types={};
-  for(const t of scored){ const k=shortType(t.type); (types[k]=types[k]||[]).push(t.pct); }
-  const typeRows=Object.entries(types).map(([k,v])=>({k:k,n:v.length,m:Math.round(v.reduce((a,b)=>a+b,0)/v.length)}))
-    .sort((a,b)=>b.n-a.n).slice(0,4);
+  for(const t of scored){
+    rememberType(t.type);
+    const k=typeLabel(t.type);
+    const row=types[k]||(types[k]={pcts:[],ids:{}});
+    row.pcts.push(t.pct); if(t.id) row.ids[t.id]=1;
+  }
+  const typeRows=Object.entries(types).map(([k,v])=>({k:k,n:Math.max(1,Object.keys(v.ids).length),m:Math.round(v.pcts.reduce((a,b)=>a+b,0)/v.pcts.length)}))
+    .sort((a,b)=>b.n-a.n).slice(0,8);
   return {delta:delta, per:per, mean:m, sd:sd, fc:fc, band:band, types:typeRows, n1:w1.length, n0:w0.length};
 }
-function shortType(t){
-  const x=(t||'').toLowerCase();
-  if(x.indexOf('homework')>=0)return 'HW';
-  if(x.indexOf('quiz')>=0)return 'Quiz';
-  if(x.indexOf('test')>=0||x.indexOf('exam')>=0)return 'Test';
-  if(x.indexOf('project')>=0)return 'Project';
-  if(x.indexOf('lab')>=0||x.indexOf('practical')>=0||x.indexOf('experiment')>=0)return 'Lab';
-  if(x.indexOf('in-class')>=0||x.indexOf('classwork')>=0)return 'Class';
-  return (t||'Task').split('/')[0].slice(0,7);
+let TYPE_FULL={};
+function rememberType(name){ const k=typeLabel(name); if(name && !TYPE_FULL[k]) TYPE_FULL[k]=name; }
+function typeLabel(name){
+  const x=String(name||'').toLowerCase();
+  if(!x) return 'Task';
+  if(x.indexOf('homework')>=0) return 'HW';
+  if(x.indexOf('in-class')>=0||x.indexOf('classwork')>=0) return 'IA';
+  if(x.indexOf('quiz')>=0) return 'Quiz';
+  if(x.indexOf('lab')>=0||x.indexOf('practical')>=0||x.indexOf('experiment')>=0||x.indexOf('project')>=0) return 'Lab';
+  if(x.indexOf('test')>=0||x.indexOf('exam')>=0||x.indexOf('cumulative')>=0) return 'Test';
+  if(x.indexOf('swim')>=0) return 'Swim';
+  return String(name).replace(/[^A-Za-z ]/g,'').trim().split(/\s+/)[0].slice(0,10) || 'Task';
 }
 function weekBlock(st){
   const w=weekStats(st);
@@ -859,7 +879,7 @@ function weekBlock(st){
     ? '<div class="big muted">—</div>'
     : (function(){const lo=Math.max(0,w.fc-w.band), hi=Math.min(100,w.fc+w.band);
         return '<div class="big">'+w.fc+'</div><div class="note">预测 '+st.summary.metric+' 区间 '+lo+'–'+hi+' · σ '+(w.sd==null?'—':w.sd.toFixed(1))+' ('+volTxt+')</div>';})()+ (w.fc<85?'<div class="note">距 A(85) 还差 '+(85-w.fc)+' 分</div>':'<div class="note">已在 A 线以上</div>');
-  const bars=w.types.map(t=>'<div class="tbar"><span class="tk2">'+t.k+'</span><span class="tb"><i style="width:'+t.m+'%"></i></span><span class="tv">'+t.m+'%</span><span class="tn">×'+t.n+'</span></div>').join('');
+  const bars=w.types.map(t=>'<div class="tbar" title="'+esc(TYPE_FULL[t.k]||t.k)+'"><span class="tk2">'+t.k+'</span><span class="tb"><i style="width:'+t.m+'%"></i></span><span class="tv">'+t.m+'%</span><span class="tn">×'+t.n+'</span></div>').join('');
   return '<div class="week"><div class="wkHead"><h3>本周解读 · This week</h3><span class="note">按任务类型权重（H10/IA15/Q15/PL20/Test40）</span></div>'+
     '<div class="wkGrid"><div class="wkBox"><h4>变化归因 Attribution</h4>'+deltaHtml+'</div>'+
     '<div class="wkBox"><h4>稳定性与预测 Forecast</h4>'+fcHtml+'</div>'+
@@ -926,38 +946,76 @@ function queueView(){
     tr.onclick=()=>{const r=D.rows.find(x=>String(x.id)===tr.getAttribute('data-id')); if(r){current=r;renderList();renderCard(r);}};
   });
 }
-// ---- class heat map (course x task type), teacher view ----
-function heatView(){
+// ---- teaching priorities: course x task type, teacher view ----
+function heatData(){
   const now=Date.now(), map={};
   for(const r of D.rows){
     if(r.advisory) continue;
     for(const lab of r.labels){
       for(const t of ((r.sectionTasks||{})[lab]||[])){
-        if(t.pct==null||!t.end||t.end>now) continue;
-        const ty=shortType(t.type);
+        if(!t.end||t.end>now) continue;
+        const ty=typeLabel(t.type);
         const key=r.course+'|'+ty;
-        const cell=map[key]||(map[key]={course:r.course,ty:ty,sum:0,n:0,ids:{}});
-        cell.sum+=t.pct; if(t.id) cell.ids[t.id]=1;
+        const c=map[key]||(map[key]={course:r.course,ty:ty,sum:0,rows:0,miss:0,ids:{},students:{}});
+        const st=(c.students[r.id]=c.students[r.id]||{sum:0,n:0});
+        c.rows++; st.n++;
+        if(t.pct==null){ c.miss++; continue; }
+        c.sum+=t.pct; st.sum+=t.pct; if(t.id) c.ids[t.id]=1;
       }
     }
   }
-  const types=['HW','Class','Quiz','Test','Lab','Project'];
-  const cells=Object.values(map).map(x=>({course:x.course,ty:x.ty,avg:x.sum/x.n,n:Math.max(1,Object.keys(x.ids).length)}));
-  const courses=[...new Set(cells.map(x=>x.course))].sort();
+  return Object.values(map).map(c=>{
+    const scored=c.rows-c.miss;
+    const avg=scored?c.sum/scored:null;
+    const students=Object.values(c.students);
+    const withWork=students.filter(s=>s.n>=1).length;
+    const affected=students.filter(s=>s.n>=2 && s.sum/s.n<70).length;
+    return {course:c.course,ty:c.ty,avg:avg,n:Math.max(1,Object.keys(c.ids).length),missRate:c.rows?c.miss/c.rows:0,affected:affected,students:withWork};
+  });
+}
+function heatView(){
+  const cells=heatData();
+  const courses=[...new Set(cells.map(c=>c.course))];
+  const types=[...new Set(cells.map(c=>c.ty))];
+  const typeTotals=types.map(t=>({t:t,n:cells.filter(c=>c.ty===t).reduce((a,c)=>a+c.n,0)}))
+    .sort((a,b)=>b.n-a.n).map(x=>x.t).slice(0,8);
   const byKey={}; cells.forEach(c=>byKey[c.course+'|'+c.ty]=c);
-  const shade=v=>{ if(v==null) return '#fff'; const a=Math.max(0,Math.min(1,(v-50)/45)); return 'rgba(26,127,55,'+(0.10+0.55*a).toFixed(2)+')'; };
-  const head='<tr><th style="width:210px">Course 课程</th>'+types.map(t=>'<th>'+t+'</th>').join('')+'</tr>';
-  const body=courses.map(c=>'<tr><td class="cn">'+esc(c)+'</td>'+types.map(t=>{
-    const x=byKey[c+'|'+t];
-    return '<td style="background:'+shade(x?x.avg:null)+'">'+(x?(Math.round(x.avg)+'%<span class="zz">n='+x.n+'</span>'):'—')+'</td>';
-  }).join('')+'</tr>').join('');
-  const weak=cells.filter(x=>x.n>=5).sort((a,b)=>a.avg-b.avg).slice(0,5)
-    .map(x=>'<li>'+esc(x.course)+' · '+x.ty+' <b>'+Math.round(x.avg)+'%</b> ('+x.n+' 项)</li>').join('');
-  document.getElementById('card').innerHTML='<h2>班级热力图 · Class heat map</h2>'+
-    '<div class="sub">我的课程 × 任务类型（本学期已截止且已录分）；颜色越深 = 均分越高；n = 去重任务数。</div>'+
+  const courseAvg=c=>{
+    const cs=cells.filter(x=>x.course===c&&x.avg!=null);
+    const w=cs.reduce((a,x)=>a+x.n,0);
+    return w?cs.reduce((a,x)=>a+x.avg*x.n,0)/w:null;
+  };
+  const courseStudents=c=>{
+    const set={}; D.rows.filter(r=>r.course===c).forEach(r=>set[r.id]=1);
+    return Object.keys(set).length;
+  };
+  courses.sort((a,b)=>(courseAvg(a)??101)-(courseAvg(b)??101));
+  const shade=v=>{ if(v==null) return '#fff'; const a=Math.max(0,Math.min(1,(v-50)/40)); return 'rgba(26,127,55,'+(0.08+0.5*a).toFixed(2)+')'; };
+  const head='<tr><th style="width:200px">Course 课程</th><th>Students</th><th>Avg</th>'+
+    typeTotals.map(t=>'<th title="'+esc(TYPE_FULL[t]||t)+'">'+esc(t)+'</th>').join('')+'</tr>';
+  const body=courses.map(c=>{
+    const ca=courseAvg(c);
+    return '<tr><td class="cn">'+esc(c)+'</td><td class="num">'+courseStudents(c)+'</td><td class="num">'+(ca==null?'—':Math.round(ca)+'%')+'</td>'+
+      typeTotals.map(t=>{
+        const x=byKey[c+'|'+t];
+        if(!x||x.avg==null) return '<td class="na">—</td>';
+        return '<td style="background:'+shade(x.avg)+'"><b>'+Math.round(x.avg)+'%</b><span class="zz">n='+x.n+'</span></td>';
+      }).join('')+'</tr>';
+  }).join('');
+  const pri=cells.filter(c=>c.avg!=null&&c.n>=5&&c.affected>=2)
+    .map(c=>Object.assign({},c,{impact:(80-c.avg)*c.affected}))
+    .sort((a,b)=>b.impact-a.impact).slice(0,6)
+    .map((c,i)=>{
+      const act=c.avg<70?'整班重讲 + 5 分钟小测':(c.missRate>0.3?'小组辅导 3–5 人，并查未录分':'小组辅导 3–5 人');
+      return '<tr><td>'+(i+1)+'</td><td><b>'+esc(c.course)+'</b> · '+esc(c.ty)+'</td><td class="num">'+Math.round(c.avg)+'%</td>'+
+        '<td class="num">'+c.n+'</td><td class="num">'+Math.round(c.missRate*100)+'%</td><td class="num">'+c.affected+'/'+c.students+'</td><td>'+act+'</td></tr>';
+    }).join('');
+  document.getElementById('card').innerHTML='<h2>教学优先 · Teaching priorities</h2>'+
+    '<div class="sub">我的课程 × 任务类型（本学期已截止、且有分数的任务）。颜色越深均分越高；n = 去重任务数；按整门课均分从低到高排列。</div>'+
     '<table class="heat">'+head+body+'</table>'+
-    '<div class="note"><b>优先补强（每门课至少 5 项）：</b></div><ul style="font-size:10.5px;margin:2px 0 8px 18px">'+(weak||'<li>数据不足</li>')+'</ul>'+
-    '<div class="note">用途：一次教研/一次重讲覆盖整门课，而不是逐个学生补。点左上「本周队列」回到学生视图。</div>';
+    '<div class="note"><b>先做这 6 件（影响 = 低于 70% 的学生数 × 差距）：</b></div>'+
+    '<table class="heat pri"><tr><th>#</th><th>课程 · 类型</th><th>均分</th><th>任务数</th><th>未录分</th><th>低于70%（人数）</th><th>建议动作</th></tr>'+(pri||'<tr><td colspan="7">数据不足</td></tr>')+'</table>'+
+    '<div class="note">用法：挑第 1 行，打开对应课程的学生卡看 Missing/Bottom，再决定重讲还是个别辅导；这张表只用于排优先级，不用于评价个人。</div>';
 }
 // ---- communication coverage (C1/C2) ----
 function commsData(){
@@ -992,7 +1050,7 @@ function commsView(){
       '「草稿」会生成中英文家长信息，仍需你自己发送。</div>';
   document.querySelectorAll('table.comms .dbtn').forEach(bt=>{
     bt.onclick=ev=>{ev.stopPropagation();const r=D.rows.find(x=>String(x.id)===bt.getAttribute('data-id'));
-      if(r){document.getElementById('draftText').value=parentDraft(r);document.getElementById('draftPanel').style.display='block';}};
+      if(r) openDraft(r);};
   });
   document.querySelectorAll('table.comms tr[data-id]').forEach(tr=>{
     tr.onclick=()=>{const r=D.rows.find(x=>String(x.id)===tr.getAttribute('data-id'));if(r){current=r;renderList();renderCard(r);}};
@@ -1031,23 +1089,31 @@ function parentDraft(st){
   const strong=pairs[0], weak=pairs[pairs.length-1];
   const miss=missingRecent(st,14);
   const w=weekStats(st);
-  const en='Dear Parent/Guardian of '+nm+',\n\n'
-    +'A short update on the last two weeks in my class. '
-    +(strong?('The strongest area right now is '+strong.l+' at '+strong.v+'% of the current '+m+' measure. '):'')
-    +(weak&&weak.l!==strong.l?('The area that needs the most support is '+weak.l+' at '+weak.v+'%. '):'')
-    +(miss?('There are '+miss+' recent task(s) with no mark recorded yet — please check with your child whether they were submitted. '):'')
-    +(w.delta!=null?('Across the last two weeks the weighted score moved '+(w.delta>=0?'+':'')+w.delta.toFixed(1)+' points. '):'')
-    +'What I will do next: one short targeted practice on the weakest area each week, and a check-in after the next assessment.\n\n'
-    +'What would help at home: 15 minutes of focused review twice a week, and a quiet check that homework is submitted on time.\n\n'
-    +'Happy to talk at any time.\n\nBest regards,\n'+D.teacher;
-  const zh='家长您好：\n\n'
-    +'向您反馈'+nm+'近两周的情况。'
-    +(strong?('目前最强的是 '+strong.l+'（'+strong.v+'%）。'):'')
-    +(weak&&weak.l!==strong.l?('最需要支持的是 '+weak.l+'（'+weak.v+'%）。'):'')
-    +(miss?('近两周还有 '+miss+' 项任务尚未录分，请和孩子确认是否已提交。'):'')
-    +'接下来我会每周针对最弱板块做一次短时练习，并在下次测评后与您同步。\n\n'
-    +'家庭配合：每周两次、每次 15 分钟专注复习；督促作业按时提交。\n\n随时联系我，谢谢！\n\n'+D.teacher;
-  return en+'\n\n-----\n\n'+zh;
+  const out=[];
+  out.push(['Dear Parent/Guardian of '+nm+',', '家长您好（'+nm+' 的家长）：']);
+  let en='A short update on the last two weeks. ', zh='向您反馈最近两周的情况。';
+  if(strong){ en+='The strongest area right now is '+strong.l+' at '+strong.v+'% of the current '+m+' measure. '; zh+='目前最强的是 '+strong.l+'（'+strong.v+'%）。'; }
+  if(weak&&strong&&weak.l!==strong.l){ en+='The area that needs the most support is '+weak.l+' at '+weak.v+'%. '; zh+='最需要支持的是 '+weak.l+'（'+weak.v+'%）。'; }
+  if(miss){ en+='There are '+miss+' recent task(s) with no mark recorded yet — please check with your child whether they were submitted. '; zh+='近两周还有 '+miss+' 项任务尚未录分，请和孩子确认是否已提交。'; }
+  if(w.delta!=null){ en+='Across the two weeks the weighted score moved '+(w.delta>=0?'+':'')+w.delta.toFixed(1)+' points. '; zh+='两周加权分变化 '+(w.delta>=0?'+':'')+w.delta.toFixed(1)+' 分。'; }
+  out.push([en.trim(), zh]);
+  out.push(['What I will do next: one short targeted practice on the weakest area each week, and a check-in after the next assessment.',
+            '接下来我会：每周针对最弱板块做一次短时练习，并在下次测评后与您同步。']);
+  out.push(['What would help at home: 15 minutes of focused review twice a week, and a quiet check that homework is submitted on time.',
+            '家庭配合：每周两次、每次 15 分钟专注复习；督促作业按时提交。']);
+  out.push(['Happy to talk at any time.', '随时联系我，谢谢！']);
+  out.push(['Best regards,\n'+D.teacher, D.teacher]);
+  return out.map(p=>p[0]+'\n'+p[1]).join('\n\n');
+}
+let draftStudent=null;
+function openDraft(st,text){
+  draftStudent=st;
+  document.getElementById('draftText').value = text || parentDraft(st);
+  const to=(st.parents||[]).filter(Boolean);
+  const el=document.getElementById('draftTo');
+  el.textContent = to.length ? ('To（IntSchool 家长邮箱）：'+to.join('; ')) : '未找到家长邮箱：请在 IntSchool → Student List → Student Detail → Parent 中确认。';
+  el.style.color = to.length ? '#57606a' : '#c00000';
+  document.getElementById('draftPanel').style.display='block';
 }
 function renderCard(st){
   const cov=m=>st.values[m].filter(v=>v!=null).length;
@@ -1127,11 +1193,17 @@ function setupActions(st){
   document.getElementById('commsBtn').onclick=()=>commsView();
   document.getElementById('parentBtn').onclick=()=>{parentView=!parentView;document.body.classList.toggle('parent',parentView);renderCard(st);};
   const dp=document.getElementById('draftPanel');
-  document.getElementById('draftBtn').onclick=()=>{document.getElementById('draftText').value=parentDraft(st);dp.style.display='block';};
+  document.getElementById('draftBtn').onclick=()=>openDraft(st);
   const selfBtn=document.getElementById('selfBtn'); if(selfBtn) selfBtn.onclick=()=>showSelf(st);
   document.getElementById('draftClose').onclick=()=>{dp.style.display='none';};
   document.getElementById('draftCopy').onclick=async()=>{const t=document.getElementById('draftText');await navigator.clipboard.writeText(t.value);};
-  document.getElementById('draftMail').onclick=()=>{const t=document.getElementById('draftText').value;location.href='mailto:?subject='+encodeURIComponent('Student update')+'&body='+encodeURIComponent(t);};
+  document.getElementById('draftMail').onclick=()=>{
+    const st2=draftStudent||st, to=(st2.parents||[]).filter(Boolean).join(';');
+    if(!to){alert('没有找到家长邮箱。请在 IntSchool → Student List → Student Detail → Parent 中确认。');return;}
+    const subject='Student update · '+st2.name+' · '+st2.class;
+    const body=document.getElementById('draftText').value;
+    location.href='ms-outlook://compose?to='+encodeURIComponent(to)+'&subject='+encodeURIComponent(subject)+'&body='+encodeURIComponent(body);
+  };
   document.getElementById('privacyBtn').onclick=()=>{privacy=!privacy;document.body.classList.toggle('privacy',privacy);if(current)renderCard(current);};
   const shareBtn=document.getElementById('shareBtn'), panel=document.getElementById('sharePanel');
   shareBtn.onclick=async()=>{const text=(privacy?'Learner · '+st.class:st.name)+' · '+st.summary.metric+'\n'+st.summary.en;

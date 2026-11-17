@@ -354,6 +354,8 @@ def main():
                            "dormitory": d.get("dormitoryName") or "",
                            "advisory": d.get("houseGroupName") or out["info"].get("advisory") or "",
                            "house": d.get("houseName") or "",
+                           "gender": d.get("gender") or "",
+                           "birthday": d.get("birthday") or 0,
                            "bus": d.get("schoolBus")}
         except Exception:
             out["info"].setdefault("advisory", "")
