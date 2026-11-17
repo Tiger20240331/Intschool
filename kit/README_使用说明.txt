@@ -91,3 +91,8 @@ Student Log）、2–5 条学习体验洞察，以及 100–300 词个性化学�
 ## 更新
 
 替换 `tools/collect.py` 与 `tools/render_radar.py` 即可，`config.json` 与 token 不受影响。
+
+
+## 分享为网页（同一 Wi-Fi）
+
+双击 7_share_on_wifi.command，会打印 http://192.168.x.x:8765/?code=xxxxxx；把这个网址发给同事/家长即可打开。关闭窗口即停止分享；访问码随机生成，也可用 RADAR_CODE 环境变量指定。不要在公共网络分享（报告含学生数据）。

@@ -1,21 +1,71 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Local live server: serves the report and refreshes data on demand."""
-import os, sys, json, glob, subprocess, threading
-from urllib.parse import quote
+"""Local / LAN live server: serves the report, refreshes on demand, and can post drafts to Outlook.
+
+  python3 tools/serve.py                     # this Mac only: http://127.0.0.1:8765/
+  RADAR_HOST=0.0.0.0 RADAR_CODE=abc123 python3 tools/serve.py   # same Wi-Fi colleagues
+"""
+import os, sys, json, glob, socket, subprocess, threading
+from urllib.parse import quote, urlparse, parse_qs
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 
 KIT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 OUT = os.path.join(KIT, "output")
+HOST = os.environ.get("RADAR_HOST", "127.0.0.1")
 PORT = int(os.environ.get("RADAR_PORT", "8765"))
+CODE = (os.environ.get("RADAR_CODE") or "").strip()
 LOCK = threading.Lock()
+
+
+def lan_addresses():
+    ips = set()
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80)); ips.add(s.getsockname()[0]); s.close()
+    except Exception:
+        pass
+    try:
+        for info in socket.getaddrinfo(socket.gethostname(), None, socket.AF_INET):
+            ip = info[4][0]
+            if not ip.startswith("127."): ips.add(ip)
+    except Exception:
+        pass
+    return sorted(ips)
+
 
 class Handler(SimpleHTTPRequestHandler):
     def __init__(self, *a, **kw):
         super().__init__(*a, directory=OUT, **kw)
+
     def log_message(self, *a):
         pass
+
+    def _cookie_ok(self):
+        return ("radar_code=" + CODE) in (self.headers.get("Cookie") or "")
+
+    def _authorized(self):
+        if not CODE:
+            return True
+        return self._cookie_ok() or parse_qs(urlparse(self.path).query).get("code", [""])[0] == CODE
+
+    def _deny(self):
+        self.send_response(401)
+        self.send_header("Content-Type", "text/plain; charset=utf-8")
+        self.end_headers()
+        self.wfile.write(("需要访问码：在链接后加 ?code=你的码\n").encode())
+
     def do_GET(self):
+        if not self._authorized():
+            self._deny(); return
+        # first visit with ?code= sets a cookie and cleans the URL
+        if CODE and not self._cookie_ok():
+            q = parse_qs(urlparse(self.path).query)
+            if q.get("code", [""])[0] == CODE:
+                path = urlparse(self.path).path
+                self.send_response(302)
+                self.send_header("Location", path or "/")
+                self.send_header("Set-Cookie", f"radar_code={CODE}; Path=/; HttpOnly; SameSite=Lax")
+                self.end_headers(); return
         if self.path in ("/", "/index.html"):
             files = sorted(glob.glob(os.path.join(OUT, "Radar_*.html")), key=os.path.getmtime, reverse=True)
             if files:
@@ -23,7 +73,10 @@ class Handler(SimpleHTTPRequestHandler):
                 self.send_header("Location", "/" + quote(os.path.basename(files[0])))
                 self.end_headers(); return
         super().do_GET()
+
     def do_POST(self):
+        if not self._authorized():
+            self._deny(); return
         if self.path == "/outlook-draft":
             try:
                 n = int(self.headers.get("Content-Length") or 0)
@@ -52,11 +105,18 @@ class Handler(SimpleHTTPRequestHandler):
                     ok = False; err = (r.stderr or r.stdout)[-800:]; break
             self.send_response(200 if ok else 500)
             self.send_header("Content-Type", "application/json; charset=utf-8")
-            self.end_headers()
-            self.wfile.write(json.dumps({"ok": ok, "error": err}, ensure_ascii=False).encode())
+            self.end_headers(); self.wfile.write(json.dumps({"ok": ok, "error": err}, ensure_ascii=False).encode())
         finally:
             LOCK.release()
 
+
 if __name__ == "__main__":
-    print(f"Radar live server: http://127.0.0.1:{PORT}/ (Ctrl+C 退出)")
-    ThreadingHTTPServer(("127.0.0.1", PORT), Handler).serve_forever()
+    print(f"Radar live server on {HOST}:{PORT}  (Ctrl+C 退出)")
+    if HOST in ("0.0.0.0", "::"):
+        for ip in lan_addresses():
+            print(f"  同一 Wi-Fi 打开： http://{ip}:{PORT}/" + (f"?code={CODE}" if CODE else ""))
+        if CODE:
+            print(f"  访问码：{CODE}（只发给要分享的人；换一个码重启即可失效）")
+    else:
+        print(f"  本机打开： http://127.0.0.1:{PORT}/" + (f"?code={CODE}" if CODE else ""))
+    ThreadingHTTPServer((HOST, PORT), Handler).serve_forever()

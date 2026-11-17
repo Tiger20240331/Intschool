@@ -1358,7 +1358,13 @@ function setupActions(st){
     if(navigator.share){try{await navigator.share({title:'Radar Report Card',text,url:location.href});return}catch(e){}}
     panel.style.display=panel.style.display==='block'?'none':'block';};
   document.getElementById('copyBtn').onclick=async()=>{const text=(privacy?'Learner · '+st.class:st.name)+' · '+st.summary.metric+'\n'+st.summary.en; await navigator.clipboard.writeText(text);panel.style.display='none';alert('摘要已复制，可粘贴到企业微信/微信。')};
-  document.getElementById('copyLinkBtn').onclick=async()=>{await navigator.clipboard.writeText(location.href);panel.style.display='none';alert('链接已复制。')};
+  document.getElementById('copyLinkBtn').onclick=async()=>{
+    if(location.protocol==='file:'){
+      alert('当前是本地文件（file://），链接只能在本机打开。\n\n要发给同事：双击 kit/7_share_on_wifi.command，把显示的 http://192.168.x.x:8765/?code=… 发给他们（同一 Wi-Fi，关闭窗口即失效）。');
+      return;
+    }
+    await navigator.clipboard.writeText(location.href);panel.style.display='none';alert('链接已复制，可直接发微信/邮件。');
+  };
   document.getElementById('emailBtn').onclick=()=>{const text=(privacy?'Learner · '+st.class:st.name)+' · '+st.summary.metric+'\n'+st.summary.en; location.href='mailto:?subject='+encodeURIComponent('Radar Report Card')+'&body='+encodeURIComponent(text);};
 
 }
