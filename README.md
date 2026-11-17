@@ -22,8 +22,8 @@ A published copy of what the kit produces — same layout, learner names replace
 `Student 01…`, no family contact details:
 <https://tiger20240331.github.io/Intschool/>
 
-The root is a gate page; the report itself sits behind a random path and one access code per
-invited parent (`kit/tools/make_invites.py`). Reproduce it with
+The root is a gate page and the report itself is stored encrypted: one access code per invited
+parent (`kit/tools/make_invites.py`) is the only way to decrypt it. Reproduce it with
 `kit/8_publish_web.command` — see *Publishing* below.
 
 ## Install
@@ -59,8 +59,9 @@ update together. Keep your `kit/config.json` and `kit/token.txt` — they are yo
 access code per parent email. `./8_publish_web.command public` publishes it openly and pings IndexNow;
 `./8_publish_web.command full` publishes real data only after typing `PUBLISH`.
 
-GitHub Pages has no server-side auth: the gate stops casual visitors and search engines, not someone
-holding the random path. Keep the public copy anonymised.
+The published report is AES-GCM encrypted; each parent's 64-bit code unwraps the key via PBKDF2
+(200k iterations), so a copy of the file alone is useless. Republishing rotates the key and retires
+older codes. Keep the public copy anonymised all the same.
 
 ## Privacy and limits
 

@@ -36,11 +36,12 @@
 
 - `8_publish_web.command`（默认）先跑 `tools/make_invites.py`：**每个家长邮箱一个访问码**，写进 `invites.csv`（邮箱 / 学生 / 班级 / 个人链接 / 访问码）和 `invites_email.txt`（中英双语邀请模板）。
 - 家长点邮件里的个人链接 `…/?k=xxxxxx` 直接进报告；也可在门禁页粘贴访问码。根地址只有 13 KB 的门禁页，不含任何学生数据。
-- 报告放在随机路径下，带 `noindex`，`robots.txt` 为 `Disallow: /`，不上报 sitemap。
+- 报告本身是**加密文件**（5.6 MB 密文），只有访问码能在浏览器里解开；没有码时下载到的只是随机字节。
+- 页面带 `noindex`，`robots.txt` 为 `Disallow: /`，不上报 sitemap。
 - 匿名化：姓名 → `Student 01…`，家长邮箱、性别、生日、宿舍、顾问、签名手机号全部删除。
 - `--reset` 重新发码：旧链接立刻失效。`8_publish_web.command full` 才会发布真实数据，需输入 `PUBLISH` 确认。
 
-边界：GitHub Pages 没有服务端鉴权，门禁挡的是“随手点开”和搜索引擎，不是“拿到随机路径的人”。所以公网只放匿名版；真实姓名与成绩留在本机或校内服务器。`invites.json`、`invites.csv` 含家长邮箱，只留本机。
+边界：GitHub Pages 没有服务端账号体系，但报告是加密存放的——没有访问码，拿到文件也只是一串随机字节。访问码 16 位随机（64 bit）+ PBKDF2 200,000 次迭代，重新发布会换密钥、旧码失效。即便如此，公网这一份仍建议保持匿名版；真实姓名与成绩留在本机或校内服务器。`invites.json`、`invites.csv` 含家长邮箱，只留本机。
 
 ## 自动识别规则
 

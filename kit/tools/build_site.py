@@ -14,6 +14,7 @@ Output (default ./site):
     .nojekyll    keep GitHub Pages from running Jekyll
 """
 import argparse
+import base64
 import datetime
 import hashlib
 import html
@@ -21,6 +22,7 @@ import json
 import os
 import re
 import secrets
+import shutil
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -249,12 +251,13 @@ p{font-size:13px;line-height:1.6;margin:8px 0}
 form{display:flex;gap:8px;margin:16px 0 6px}
 input{flex:1;padding:9px 11px;border:1px solid var(--line);border-radius:7px;font-size:14px}
 button{padding:9px 16px;border:0;border-radius:7px;background:var(--blue);color:#fff;font-size:14px;cursor:pointer}
+button:disabled{opacity:.6}
 .msg{color:#c00000;font-size:12.5px;min-height:18px;margin:4px 0}
 .fine{color:#8b949e;font-size:11px;line-height:1.6;margin-top:14px;border-top:1px solid #eaeef2;padding-top:10px}
 """
 
 
-def gate_page(report_path, hashes):
+def gate_page(cipher_path, wrapped):
     return """<!doctype html>
 <html lang="zh"><head><meta charset="utf-8">
 <title>雷达报告卡 · 受邀访问 | Radar Report Card (invitation only)</title>
@@ -269,39 +272,58 @@ def gate_page(report_path, hashes):
   or paste the access code from that email below.</p>
   <form id="f" autocomplete="off">
     <input id="k" placeholder="访问码 / access code" spellcheck="false" autocomplete="off">
-    <button type="submit">进入 Enter</button>
+    <button type="submit" id="b">进入 Enter</button>
   </form>
   <p class="msg" id="m"></p>
-  <p class="fine">访问码由任课老师单独发放；重新发布后旧访问码可能失效。<br>
-  Codes are issued by the teacher individually and may be retired when the page is republished.</p>
+  <p class="fine">报告以加密文件存放，只有访问码能解开；访问码由任课老师单独发放，重新发布后旧码失效。<br>
+  The report is stored encrypted and only an access code can open it. Codes are issued by the
+  teacher individually and are retired when the page is republished.</p>
 </main>
 <script>
-const H=%s, P=%s;
-async function digest(s){
-  const b=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(s.trim()));
-  return [...new Uint8Array(b)].map(x=>x.toString(16).padStart(2,'0')).join('');
+const KEYS=%s, C=%s, it=new TextEncoder();
+function b64d(s){const b=atob(s),u=new Uint8Array(b.length);for(let i=0;i<b.length;i++)u[i]=b.charCodeAt(i);return u}
+async function sha(s){const d=await crypto.subtle.digest('SHA-256',it.encode(s.trim()));
+  return [...new Uint8Array(d)].map(x=>x.toString(16).padStart(2,'0')).join('')}
+async function decrypt(code){
+  const h=await sha(code), e=KEYS.find(x=>x.h===h);
+  if(!e) return null;
+  const base=await crypto.subtle.importKey('raw',it.encode(code.trim()),'PBKDF2',false,['deriveKey']);
+  const k=await crypto.subtle.deriveKey({name:'PBKDF2',salt:b64d(e.s),iterations:200000,hash:'SHA-256'},
+      base,{name:'AES-GCM',length:256},false,['decrypt']);
+  let raw;
+  try{ raw=await crypto.subtle.decrypt({name:'AES-GCM',iv:b64d(e.i)},k,b64d(e.c)); }
+  catch(err){ return null; }
+  const rk=await crypto.subtle.importKey('raw',raw,'AES-GCM',false,['decrypt']);
+  const res=await fetch(C,{cache:'no-store'});
+  const buf=new Uint8Array(await res.arrayBuffer());
+  const html=await crypto.subtle.decrypt({name:'AES-GCM',iv:buf.slice(0,12)},rk,buf.slice(12));
+  return new TextDecoder().decode(html);
 }
-async function unlock(code){
-  if(!code) return false;
-  try{ if(H.indexOf(await digest(code))>=0){ localStorage.setItem('radar_ok','1'); return true; } }catch(e){}
-  return false;
+async function go(code){
+  const html=await decrypt(code);
+  if(!html) return false;
+  try{ localStorage.setItem('radar_key',code.trim()); }catch(e){}
+  document.open(); document.write(html); document.close();
+  return true;
 }
-(async()=>{
-  const q=new URLSearchParams(location.search);
-  const k=q.get('k')||q.get('code')||'';
-  if(k && await unlock(k)){ location.replace(P); return; }
-  try{ if(localStorage.getItem('radar_ok')) location.replace(P); }catch(e){}
-})();
-document.getElementById('f').addEventListener('submit',async e=>{
-  e.preventDefault();
-  const m=document.getElementById('m');
-  if(await unlock(document.getElementById('k').value)) location.replace(P);
-  else m.textContent='访问码无效 / that code is not valid';
+document.getElementById('f').addEventListener('submit',async ev=>{
+  ev.preventDefault();
+  const m=document.getElementById('m'), b=document.getElementById('b');
+  b.disabled=true; m.style.color='#57606a'; m.textContent='正在解密… / opening…';
+  const ok=await go(document.getElementById('k').value);
+  if(!ok){ m.style.color='#c00000'; m.textContent='访问码无效 / that code is not valid'; b.disabled=false; }
 });
-</script></body></html>""" % (GATE_CSS, json.dumps(hashes), json.dumps(report_path))
+(async()=>{
+  const q=new URLSearchParams(location.search), k=q.get('k')||q.get('code')||'';
+  if(k && await go(k)) return;
+  if(k){ const m=document.getElementById('m'); m.textContent='访问码无效 / that code is not valid'; }
+  let saved=''; try{ saved=localStorage.getItem('radar_key')||''; }catch(e){}
+  if(saved) await go(saved);
+})();
+</script></body></html>""" % (GATE_CSS, json.dumps(wrapped), json.dumps(cipher_path))
 
 
-def load_invite_hashes():
+def load_invite_tokens():
     path = os.path.join(KIT, "invites.json")
     if not os.path.exists(path):
         return []
@@ -309,7 +331,21 @@ def load_invite_hashes():
         data = json.load(open(path, encoding="utf-8"))
     except Exception:
         return []
-    return [i["hash"] for i in data.get("invites", []) if i.get("hash")]
+    return [i["token"] for i in data.get("invites", []) if i.get("token")]
+
+
+def wrap_key(code, key):
+    """Encrypt the report key under a passphrase, so a code (and only a code) opens it."""
+    from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+    code_b = code.strip().encode()
+    salt = os.urandom(16)
+    derived = hashlib.pbkdf2_hmac("sha256", code_b, salt, 200000, 32)
+    iv = os.urandom(12)
+    ct = AESGCM(derived).encrypt(iv, key, None)
+    return {"h": hashlib.sha256(code_b).hexdigest(),
+            "s": base64.b64encode(salt).decode(),
+            "i": base64.b64encode(iv).decode(),
+            "c": base64.b64encode(ct).decode()}
 
 
 def main():
@@ -362,14 +398,26 @@ def main():
     base = args.base_url.rstrip("/") + "/"
 
     if args.private:
-        hashes = load_invite_hashes()
-        if not hashes:
+        tokens = load_invite_tokens()
+        if not tokens:
             die("private mode needs invitations - run: python3 tools/make_invites.py")
+        try:
+            from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+        except ImportError:
+            die("private mode encrypts the report and needs the cryptography package: python3 -m pip install --user cryptography")
+
+        key = os.urandom(32)
+        nonce = os.urandom(12)
+        cipher = nonce + AESGCM(key).encrypt(nonce, doc.encode("utf-8"), None)
+        for name in os.listdir(args.out):  # drop earlier encrypted builds
+            if name.startswith("p-") and os.path.isdir(os.path.join(args.out, name)):
+                shutil.rmtree(os.path.join(args.out, name))
         report_dir = "p-" + secrets.token_hex(8)
         os.makedirs(os.path.join(args.out, report_dir), exist_ok=True)
-        open(os.path.join(args.out, report_dir, "index.html"), "w", encoding="utf-8").write(doc)
+        open(os.path.join(args.out, report_dir, "r.bin"), "wb").write(cipher)
+        wrapped = [wrap_key(t, key) for t in tokens]
         open(os.path.join(args.out, "index.html"), "w", encoding="utf-8").write(
-            gate_page(report_dir + "/", hashes))
+            gate_page(report_dir + "/r.bin", wrapped))
         open(os.path.join(args.out, "robots.txt"), "w", encoding="utf-8").write(
             "User-agent: *\nDisallow: /\n")
         open(os.path.join(args.out, ".nojekyll"), "w").write("")
@@ -378,7 +426,7 @@ def main():
             '<meta http-equiv="refresh" content="0;url=/"><p>Redirecting…</p>')
         print("site   :", args.out)
         print("source :", src)
-        print("mode   : private - %d access codes, report at %s" % (len(hashes), report_dir))
+        print("mode   : private - %d access codes, encrypted report %.1f MB" % (len(tokens), len(cipher) / 1e6))
         print("gate   :", base)
         print("redact :", "yes - names and personal data removed" if args.redact else "no - real data")
         return

@@ -107,7 +107,7 @@ def main():
                 continue
             seen.add(key)
             prev = old.get(key)
-            token = prev["token"] if prev else secrets.token_hex(6)
+            token = prev["token"] if prev else secrets.token_hex(8)
             invites.append({
                 "token": token,
                 "hash": sha(token),
@@ -124,7 +124,7 @@ def main():
             cfg = json.load(open(cfgpath, encoding="utf-8"))
         teacher_email = cfg.get("publish_owner_email") or "teacher"
         prev = old.get(teacher_email.lower())
-        token = prev["token"] if prev else secrets.token_hex(6)
+        token = prev["token"] if prev else secrets.token_hex(8)
         invites.append({"token": token, "hash": sha(token), "email": teacher_email,
                         "student": "（老师本人 / teacher）", "class": "",
                         "issued": (prev or {}).get("issued") or datetime.date.today().isoformat()})
