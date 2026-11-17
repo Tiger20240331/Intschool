@@ -2,8 +2,9 @@
 # -*- coding: utf-8 -*-
 """Turn the single-file radar report into a static website that search engines can index.
 
-    python3 tools/build_site.py                        # real data, ready to publish
-    python3 tools/build_site.py --redact --out site-demo  # anonymised public demo
+    python3 tools/build_site.py                          # real data, ready to publish
+    python3 tools/build_site.py --redact --out site-demo # anonymised public demo
+    python3 tools/build_site.py --redact --private       # invitation-only: gate page + hidden report
 
 Output (default ./site):
     index.html   the report + SEO metadata + a crawlable intro/noscript block
@@ -14,10 +15,12 @@ Output (default ./site):
 """
 import argparse
 import datetime
+import hashlib
 import html
 import json
 import os
 import re
+import secrets
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -131,7 +134,7 @@ FAVICON = ("<link rel=\"icon\" href=\"data:image/svg+xml,"
            "%3Cpath d='M16 16 L27 9' stroke='%23c00000' stroke-width='2'/%3E%3C/svg%3E\">")
 
 
-def seo_head(payload, base_url, demo):
+def seo_head(payload, base_url, demo, private=False):
     teacher = payload.get("teacher") or "Teacher"
     n = len(payload.get("rows") or [])
     courses = payload.get("courses") or []
@@ -156,7 +159,8 @@ def seo_head(payload, base_url, demo):
     }
     tags = [
         '<meta name="description" content="%s">' % html.escape(desc),
-        '<meta name="robots" content="index,follow,max-image-preview:large">',
+        '<meta name="robots" content="%s">' % ("noindex,nofollow,noarchive" if private
+                                                 else "index,follow,max-image-preview:large"),
         '<meta name="author" content="%s">' % html.escape(teacher),
         '<meta name="keywords" content="radar report card, IntSchool, gradebook, student progress, '
         'missing work, parent communication, %s">' % html.escape(teacher),
@@ -231,12 +235,91 @@ STYLE = """
 """
 
 
+
+GATE_CSS = """
+:root{--blue:#1f4e79;--line:#d0d7de}
+*{box-sizing:border-box}
+body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;
+ font-family:-apple-system,"PingFang SC","Segoe UI",Arial,sans-serif;background:#f6f8fa;color:#1f2328}
+.gate{background:#fff;border:1px solid var(--line);border-top:4px solid var(--blue);border-radius:12px;
+ padding:26px 30px;max-width:520px;width:calc(100% - 40px);box-shadow:0 10px 30px rgba(0,0,0,.06)}
+h1{font-size:18px;margin:0 0 10px;color:var(--blue)}
+p{font-size:13px;line-height:1.6;margin:8px 0}
+.en{color:#57606a;font-size:12px}
+form{display:flex;gap:8px;margin:16px 0 6px}
+input{flex:1;padding:9px 11px;border:1px solid var(--line);border-radius:7px;font-size:14px}
+button{padding:9px 16px;border:0;border-radius:7px;background:var(--blue);color:#fff;font-size:14px;cursor:pointer}
+.msg{color:#c00000;font-size:12.5px;min-height:18px;margin:4px 0}
+.fine{color:#8b949e;font-size:11px;line-height:1.6;margin-top:14px;border-top:1px solid #eaeef2;padding-top:10px}
+"""
+
+
+def gate_page(report_path, hashes):
+    return """<!doctype html>
+<html lang="zh"><head><meta charset="utf-8">
+<title>雷达报告卡 · 受邀访问 | Radar Report Card (invitation only)</title>
+<meta name="robots" content="noindex,nofollow,noarchive">
+<meta name="referrer" content="no-referrer">
+<style>%s</style></head>
+<body>
+<main class="gate">
+  <h1>雷达报告卡 · 受邀访问</h1>
+  <p>这个页面只向收到邀请邮件的家长和同事开放。请直接点击邮件里的个人链接；也可以把邮件中的访问码粘贴到下面。</p>
+  <p class="en">This page is invitation-only. Open the personal link in your invitation email,
+  or paste the access code from that email below.</p>
+  <form id="f" autocomplete="off">
+    <input id="k" placeholder="访问码 / access code" spellcheck="false" autocomplete="off">
+    <button type="submit">进入 Enter</button>
+  </form>
+  <p class="msg" id="m"></p>
+  <p class="fine">访问码由任课老师单独发放；重新发布后旧访问码可能失效。<br>
+  Codes are issued by the teacher individually and may be retired when the page is republished.</p>
+</main>
+<script>
+const H=%s, P=%s;
+async function digest(s){
+  const b=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(s.trim()));
+  return [...new Uint8Array(b)].map(x=>x.toString(16).padStart(2,'0')).join('');
+}
+async function unlock(code){
+  if(!code) return false;
+  try{ if(H.indexOf(await digest(code))>=0){ localStorage.setItem('radar_ok','1'); return true; } }catch(e){}
+  return false;
+}
+(async()=>{
+  const q=new URLSearchParams(location.search);
+  const k=q.get('k')||q.get('code')||'';
+  if(k && await unlock(k)){ location.replace(P); return; }
+  try{ if(localStorage.getItem('radar_ok')) location.replace(P); }catch(e){}
+})();
+document.getElementById('f').addEventListener('submit',async e=>{
+  e.preventDefault();
+  const m=document.getElementById('m');
+  if(await unlock(document.getElementById('k').value)) location.replace(P);
+  else m.textContent='访问码无效 / that code is not valid';
+});
+</script></body></html>""" % (GATE_CSS, json.dumps(hashes), json.dumps(report_path))
+
+
+def load_invite_hashes():
+    path = os.path.join(KIT, "invites.json")
+    if not os.path.exists(path):
+        return []
+    try:
+        data = json.load(open(path, encoding="utf-8"))
+    except Exception:
+        return []
+    return [i["hash"] for i in data.get("invites", []) if i.get("hash")]
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--src", default=None, help="report html (default: newest in output/)")
     ap.add_argument("--out", default=os.path.join(KIT, "site"))
     ap.add_argument("--base-url", default="https://tiger20240331.github.io/Intschool")
     ap.add_argument("--redact", action="store_true", help="remove names / parent emails / personal fields")
+    ap.add_argument("--private", action="store_true",
+                    help="invitation-only: a gate page at the root, report under an unguessable path, no indexing")
     args = ap.parse_args()
 
     src = args.src
@@ -253,7 +336,7 @@ def main():
         doc = redact(doc, payload, i, j)
         payload, i, j = parse_payload(doc)
 
-    title, desc, head_tags = seo_head(payload, args.base_url, args.redact)
+    title, desc, head_tags = seo_head(payload, args.base_url, args.redact, args.private)
 
     # 1. title + head metadata
     doc, n = re.subn(r"<title>[^<]*</title>", "<title>%s</title>" % html.escape(title), doc, count=1)
@@ -276,9 +359,32 @@ def main():
                       + '\n  <div id="card"></div>', 1)
 
     os.makedirs(args.out, exist_ok=True)
+    base = args.base_url.rstrip("/") + "/"
+
+    if args.private:
+        hashes = load_invite_hashes()
+        if not hashes:
+            die("private mode needs invitations - run: python3 tools/make_invites.py")
+        report_dir = "p-" + secrets.token_hex(8)
+        os.makedirs(os.path.join(args.out, report_dir), exist_ok=True)
+        open(os.path.join(args.out, report_dir, "index.html"), "w", encoding="utf-8").write(doc)
+        open(os.path.join(args.out, "index.html"), "w", encoding="utf-8").write(
+            gate_page(report_dir + "/", hashes))
+        open(os.path.join(args.out, "robots.txt"), "w", encoding="utf-8").write(
+            "User-agent: *\nDisallow: /\n")
+        open(os.path.join(args.out, ".nojekyll"), "w").write("")
+        open(os.path.join(args.out, "404.html"), "w", encoding="utf-8").write(
+            '<!doctype html><meta charset="utf-8"><title>Redirecting</title>'
+            '<meta http-equiv="refresh" content="0;url=/"><p>Redirecting…</p>')
+        print("site   :", args.out)
+        print("source :", src)
+        print("mode   : private - %d access codes, report at %s" % (len(hashes), report_dir))
+        print("gate   :", base)
+        print("redact :", "yes - names and personal data removed" if args.redact else "no - real data")
+        return
+
     open(os.path.join(args.out, "index.html"), "w", encoding="utf-8").write(doc)
 
-    base = args.base_url.rstrip("/") + "/"
     open(os.path.join(args.out, "robots.txt"), "w", encoding="utf-8").write(
         "User-agent: *\nAllow: /\n\nSitemap: %ssitemap.xml\n" % base)
     today = datetime.date.today().isoformat()

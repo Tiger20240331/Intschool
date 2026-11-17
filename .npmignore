@@ -1,3 +1,6 @@
 kit/data/*.json
 kit/output/*
 kit/token.txt
+kit/invites.json
+kit/invites.csv
+kit/invites_email.txt

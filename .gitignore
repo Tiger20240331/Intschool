@@ -4,3 +4,6 @@ kit/output/*
 kit/token.txt
 kit/indexnow.key
 !kit/data/.gitkeep
+kit/invites.json
+kit/invites.csv
+kit/invites_email.txt

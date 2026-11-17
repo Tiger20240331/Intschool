@@ -2,7 +2,8 @@
 # -*- coding: utf-8 -*-
 """Publish the radar report as a static website on GitHub Pages.
 
-    python3 tools/publish_web.py --mode redacted     # public, anonymised demo
+    python3 tools/publish_web.py --mode private      # invitation-only, anonymised (default)
+    python3 tools/publish_web.py --mode redacted     # public, anonymised
     python3 tools/publish_web.py --mode full         # real learner data - public
 
 Needs token.txt (run tools/github_login.py once). The site is force-pushed to the
@@ -71,7 +72,7 @@ def config_repo():
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--mode", choices=["full", "redacted"], default="redacted")
+    ap.add_argument("--mode", choices=["full", "redacted", "private"], default="private")
     ap.add_argument("--repo", default=config_repo() or DEFAULT_REPO)
     ap.add_argument("--branch", default="gh-pages")
     args = ap.parse_args()
@@ -81,8 +82,10 @@ def main():
     tok = token()
 
     build = [sys.executable, os.path.join(HERE, "build_site.py"), "--base-url", base]
-    if args.mode == "redacted":
+    if args.mode in ("redacted", "private"):
         build.append("--redact")
+    if args.mode == "private":
+        build.append("--private")
 
     tmp = tempfile.mkdtemp(prefix="radar-site-")
     site = os.path.join(tmp, "site")
@@ -121,6 +124,9 @@ def main():
             break
     print("live url :", base + "/")
     print("mode     :", args.mode)
+    if args.mode == "private":
+        print("access   : invitation codes in invites.json / invites.csv")
+        print("note     : the root shows a gate page; robots.txt disallows everything")
 
 
 if __name__ == "__main__":

@@ -28,15 +28,19 @@
 
 | 场景 | 做法 |
 |---|---|
-| 同一 Wi-Fi 的同事、家长 | 双击 `7_share_on_wifi.command`，把窗口里的 `http://192.168.x.x:8765/?code=…` 发过去；关闭窗口即停止分享 |
-| 公网、可被搜索引擎收录的网页 | 双击 `8_publish_web.command`：生成**匿名演示版** → 推送到 GitHub Pages → 通知 IndexNow；完成后输出 `https://<账号>.github.io/<仓库>/` |
+| 同一 Wi-Fi 的同事、家长 | 双击 `7_share_on_wifi.command`，把窗口里的 `http://192.168.x.x:8765/?code=…` 发过去；关闭窗口即停止 |
+| 公网、只给受邀的人看 | 双击 `8_publish_web.command`：生成匿名演示版 → 发布到 GitHub Pages → 用 `invites.csv` 给每位家长发个人链接 |
+| 公网、可被搜索引擎收录 | `./8_publish_web.command public`：匿名版公开，任何人可搜到 |
 
-说明：
+联网版怎么运转：
 
-- 联网发布默认走匿名版：学生姓名替换为 `Student 01`，家长邮箱、性别、生日、宿舍等字段删除，成绩保留用于展示版式。
-- `8_publish_web.command full` 才会发布真实数据，需要输入 `PUBLISH` 确认。GitHub Pages 没有任何访问控制，页面一旦被搜索引擎收录就无法彻底撤回，请先确认学校口径。
-- 发布地址由 `config.json` 的 `publish_repo` 决定；`tools/build_site.py` 可先在本地生成站点预览。
-- Google 收录需要在自己的 Search Console 里提交一次 `sitemap.xml`；Bing / Yandex 由 IndexNow 自动推送。
+- `8_publish_web.command`（默认）先跑 `tools/make_invites.py`：**每个家长邮箱一个访问码**，写进 `invites.csv`（邮箱 / 学生 / 班级 / 个人链接 / 访问码）和 `invites_email.txt`（中英双语邀请模板）。
+- 家长点邮件里的个人链接 `…/?k=xxxxxx` 直接进报告；也可在门禁页粘贴访问码。根地址只有 13 KB 的门禁页，不含任何学生数据。
+- 报告放在随机路径下，带 `noindex`，`robots.txt` 为 `Disallow: /`，不上报 sitemap。
+- 匿名化：姓名 → `Student 01…`，家长邮箱、性别、生日、宿舍、顾问、签名手机号全部删除。
+- `--reset` 重新发码：旧链接立刻失效。`8_publish_web.command full` 才会发布真实数据，需输入 `PUBLISH` 确认。
+
+边界：GitHub Pages 没有服务端鉴权，门禁挡的是“随手点开”和搜索引擎，不是“拿到随机路径的人”。所以公网只放匿名版；真实姓名与成绩留在本机或校内服务器。`invites.json`、`invites.csv` 含家长邮箱，只留本机。
 
 ## 自动识别规则
 

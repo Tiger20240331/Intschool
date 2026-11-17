@@ -16,10 +16,15 @@ illustrated guide and configurable defaults it needs.
 - **Communication.** Bilingual parent drafts (copy or mail only — never sent), a printable
   student self-check, and a parent view without peer comparison.
 
-## Live demo
+## Live demo (invitation only)
 
-An anonymised copy of the report the kit produces — same layout, names removed:
+A published copy of what the kit produces — same layout, learner names replaced by
+`Student 01…`, no family contact details:
 <https://tiger20240331.github.io/Intschool/>
+
+The root is a gate page; the report itself sits behind a random path and one access code per
+invited parent (`kit/tools/make_invites.py`). Reproduce it with
+`kit/8_publish_web.command` — see *Publishing* below.
 
 ## Install
 
@@ -47,6 +52,15 @@ as a teaching course.
 
 Install the newer version of `radar-on-intschool-skill` (same package name); the skill body and kit
 update together. Keep your `kit/config.json` and `kit/token.txt` — they are yours, not the author's.
+
+## Publishing
+
+`8_publish_web.command` (default) builds an anonymised copy, pushes it to GitHub Pages and mints one
+access code per parent email. `./8_publish_web.command public` publishes it openly and pings IndexNow;
+`./8_publish_web.command full` publishes real data only after typing `PUBLISH`.
+
+GitHub Pages has no server-side auth: the gate stops casual visitors and search engines, not someone
+holding the random path. Keep the public copy anonymised.
 
 ## Privacy and limits
 
