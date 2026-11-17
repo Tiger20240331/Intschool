@@ -394,15 +394,20 @@ def main():
         sys.exit(1)
     # Task Weights palette: abbr, colour and weight per task type, as shown in the gradebook
     palette = {}
+    course_weights = {}
     for c in teaching:
         try:
             rules = get(f"/task-grade/rule?courseId={c['courseId']}&schoolYearId={year_id}", timeout=15)
+            w = {}
             for block in rules or []:
                 for r in block.get("rules") or []:
                     name = r.get("taskType")
-                    if name and name not in palette:
+                    if not name: continue
+                    w[name] = r.get("percentage")
+                    if name not in palette:
                         palette[name] = {"name": name, "abbr": r.get("abbr") or "",
                                          "colour": r.get("colour") or "", "weight": r.get("percentage")}
+            if w: course_weights[c["name"]] = w
         except Exception as e:
             print("任务类型调色板失败", c["name"], e)
     meta = {"teacherName": teacher_name, "schoolId": SCHOOL, "schoolYear": year.get("name"),
@@ -446,7 +451,7 @@ def main():
             print("任务缓存写入失败", e)
     print(f"任务说明缓存：{len(task_meta)} 条")
     json.dump({"students": students, "taskMeta": task_meta,
-               "taskTypes": list(palette.values())},
+               "taskTypes": list(palette.values()), "courseWeights": course_weights},
               open(os.path.join(DATA, "phase2.json"), "w", encoding="utf-8"), ensure_ascii=False)
     json.dump(means, open(os.path.join(DATA, "class_means.json"), "w", encoding="utf-8"), ensure_ascii=False, indent=1)
     json.dump(meta, open(os.path.join(DATA, "meta.json"), "w", encoding="utf-8"), ensure_ascii=False, indent=1)

@@ -137,7 +137,8 @@ for s in data["students"]:
         "labelZh": [(zh_category(x) if grade >= 9 else zh_label(x)) for x in labels],
         "levels": [levels.get(x, "") for x in labels],
         "values": vals, "ownMean": own, "entries": entries, "also": [f"{x['label']} ({x['course']})" for x in dropped],
-        "sectionTasks": tasks, "taskTotals": s.get("tasks") or {}, "parents": (c.get("parents") or []),
+        "sectionTasks": tasks, "sectionCourses": {sec["label"]: sec.get("course", "") for sec in secs},
+        "taskTotals": s.get("tasks") or {}, "parents": (c.get("parents") or []),
         "info": s.get("info") or {}, "lifeBlock": s.get("lifeBlock") or [],
         "_diary": {"positives": d.get("positives", 0), "concerns": d.get("concerns", 0),
                    "topPos": pos_types.most_common(3), "topInf": inf_types.most_common(3)},
@@ -355,7 +356,7 @@ if DEFAULT_COURSE and not any(c["name"] == DEFAULT_COURSE for c in COURSES):
     DEFAULT_COURSE = COURSES[0]["name"] if COURSES else ""
 
 payload = {"metrics": METRICS, "rows": students, "taskMeta": (data.get("taskMeta") or {}),
-           "taskTypes": (data.get("taskTypes") or []),
+           "taskTypes": (data.get("taskTypes") or []), "courseWeights": (data.get("courseWeights") or {}),
            "courses": COURSES, "defaultCourse": DEFAULT_COURSE,
            "cohortMean": cohort_mean, "cohortN": cohort_n,
            "generated": GENERATED, "teacher": TEACHER, "signature": SIGNATURE,
@@ -431,6 +432,7 @@ th{background:var(--bg)}
 .cpLegend{display:flex;flex-wrap:wrap;gap:6px;margin-top:4px;font-size:8.5px;color:#57606a}
 .cpLegend .lg{display:flex;align-items:center;gap:3px}
 .cpLegend i{width:8px;height:8px;border-radius:2px;display:inline-block;border:1px solid rgba(0,0,0,.18)}
+.cpWeights{margin-top:4px;font-size:8.5px;color:#1f4e79}
 .hoverPanel table{font-size:9.3px}
 .hoverPanel .cpHead{font-size:11.5px;margin-bottom:1px}
 .hoverPanel .cpHead .zh{color:#6b7280;font-size:10px;margin-left:4px}
@@ -697,12 +699,18 @@ function coursePanel(st,i){
     bars+='<rect class="bar" data-i="'+row.idx+'" x="'+x+'" y="'+(base-h)+'" width="'+w+'" height="'+h+'" fill="'+typeColor(t)+'" stroke="rgba(0,0,0,.18)" stroke-width=".7" rx="1"/>';
   });
   const showLv=lv&&!new RegExp('(^|[ .-])'+lv.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'$','i').test(lab);
+  const course=(st.sectionCourses||{})[lab]||'';
+  const cw=(D.courseWeights||{})[course]||{};
+  const wseen={};
+  Object.keys(cw).forEach(k=>{ const lbl=typeLabel(k); if(cw[k]>0 && !(lbl in wseen)) wseen[lbl]=cw[k]; });
+  const weightLine=Object.keys(wseen).map(k=>esc(k)+' '+wseen[k]+'%').join(' · ');
   const used=[]; shown.forEach(r=>{ if(used.indexOf(r.t.type)<0) used.push(r.t.type); });
   const legend=used.slice(0,6).map(tn=>'<span class="lg"><i style="background:'+typeColor({type:tn})+'"></i>'+esc(typeLabel(tn))+'</span>').join('');
   return '<div class="cpHead"><b>'+esc(lab)+'</b>'+(showLv?' <span class="lv">'+esc(lv)+'</span>':'')+(zh?' <span class="zh">'+esc(zh)+'</span>':'')+'</div>'+
     '<div class="cpSub">共 '+shown.length+' 项（已评分且计入总评）· 最新在左 · 左右滚动看更早'+(avg!=null?' · 均分 '+avg+'%':'')+'</div>'+
     '<div class="cpScroll"><svg width="'+W+'" height="'+H+'" viewBox="0 0 '+W+' '+H+'">'+grid+bars+'</svg></div>'+
-    '<div class="cpLegend">'+legend+'</div>';
+    '<div class="cpLegend">'+legend+'</div>'+
+    (weightLine?'<div class="cpWeights">权重 Weight：'+weightLine+'</div>':'');
 }
 let hideTimer=null;
 function scheduleHide(){clearTimeout(hideTimer);hideTimer=setTimeout(()=>{document.getElementById('hoverPanel').style.display='none';hideTip();},200);}
@@ -792,7 +800,7 @@ function taskRows(st,days){
   return out;
 }
 function hlTable(title,cls,rows,expanded){
-  const body=rows.map(r=>'<tr><td class="tn"><span class="tname">'+esc(r.name)+'</span><span class="tcourse">'+esc(r.lab)+'</span></td>'+
+  const body=rows.map(r=>'<tr data-id="'+(r.id||'')+'"><td class="tn"><span class="tname">'+esc(r.name)+'</span><span class="tcourse">'+esc(r.lab)+'</span></td>'+
       '<td class="num">'+(r.pct==null?'<span class="miss">missing</span>':r.pct+'%')+
       '<span class="tscore">'+(r.score==null?'—':r.score+'/'+r.top)+'</span></td>'+
       '<td class="num dt">'+fmtDate(r.end)+'</td></tr>').join('');
@@ -860,6 +868,7 @@ function weekStats(st){
   }
   per.sort((x,y)=>y.d-x.d);
   const scored=all.filter(t=>t.pct!=null);
+  const typeFrom=scored.length?scored[0].end:null, typeTo=scored.length?scored[scored.length-1].end:null;
   const lastTasks=scored.slice(-6);
   const last=lastTasks.map(t=>t.pct);
   const winFrom=lastTasks.length?lastTasks[0].end:null;
@@ -880,7 +889,7 @@ function weekStats(st){
   }
   const typeRows=Object.entries(types).map(([k,v])=>({k:k,n:Math.max(1,Object.keys(v.ids).length),m:Math.round(v.pcts.reduce((a,b)=>a+b,0)/v.pcts.length)}))
     .sort((a,b)=>b.n-a.n).slice(0,8);
-  return {delta:delta, per:per, mean:m, sd:sd, fc:fc, band:band, types:typeRows, n1:w1.length, n0:w0.length, nLast:lastTasks.length, winFrom:winFrom, winTo:winTo};
+  return {delta:delta, per:per, mean:m, sd:sd, fc:fc, band:band, types:typeRows, n1:w1.length, n0:w0.length, nLast:lastTasks.length, winFrom:winFrom, winTo:winTo, typeFrom:typeFrom, typeTo:typeTo, typeN:scored.length};
 }
 let TYPE_FULL={};
 function rememberType(name){ const k=typeLabel(name); if(name && !TYPE_FULL[k]) TYPE_FULL[k]=name; }
@@ -903,6 +912,8 @@ function typeLabel(name){
 function weekBlock(st){
   const w=weekStats(st);
   const sign=v=>(v>=0?'+':'')+v.toFixed(1);
+  const d=t=>t?new Date(t).toISOString().slice(0,10):'—';
+  const now=Date.now();
   const push=(arr)=>arr.map(x=>'<span class="wk '+ (x.d>=0?'up':'down') +'">'+esc(x.lab)+' '+sign(x.d)+'</span>').join('');
   const ups=w.per.slice(0,2), downs=w.per.slice(-2).reverse().filter(x=>x.d<0);
   const volTxt=w.sd==null?'—':(w.sd<8?'稳定':(w.sd<18?'有波动':'大起大落'));
@@ -917,10 +928,25 @@ function weekBlock(st){
     const full=TYPE_FULL[t.k]||t.k, col=typeColor({type:full});
     return '<div class="tbar" title="'+esc(full)+' · '+t.n+' 项"><span class="tk2">'+t.k+'</span><span class="tb"><i style="width:'+t.m+'%;background:'+col+'"></i></span><span class="tv">'+t.m+'%</span><span class="tn">×'+t.n+'</span></div>';
   }).join('');
+  const attrTip='<b>变化归因 说明</b>'
+    +'<div class="tx">比较窗口：前 7 天（'+d(now-14*864e5)+' → '+d(now-7*864e5)+'，'+w.n0+' 项）与近 7 天（'+d(now-7*864e5)+' → '+d(now)+'，'+w.n1+' 项）。</div>'
+    +'<div class="tx">只统计已截止、已评分的任务，按任务类型权重（Task Weights）加权；下方标签是变化最大的 2 门课。</div>'
+    +'<div class="tk">样本少于 2 项时显示 —；单科变化只用于定位，不代表整体。</div>';
+  const typeTip='<b>按任务类型 说明</b>'
+    +'<div class="tx">统计范围：本学期已截止、已评分的全部任务（'+d(w.typeFrom)+' → '+d(w.typeTo)+'，共 '+w.typeN+' 项）。</div>'
+    +'<div class="tx">按 IntSchool 任务类型汇总；颜色取自成绩册 Task Weights；×n = 去重任务数。</div>'
+    +'<div class="tk">只显示有分数的任务；未录分/不计入总评的任务不会出现在这里。</div>';
+  const fcTip='<b>稳定性与预测 说明</b>'
+    +'<div class="tx">依据：最近 '+w.nLast+' 次已评分任务（'+d(w.winFrom)+' → '+d(w.winTo)+'），当前口径 '+st.summary.metric+'。</div>'
+    +'<div class="tx">σ '+(w.sd==null?'—':w.sd.toFixed(1))+' = 这几次得分的标准差：&lt;8 稳定、8–18 有波动、&gt;18 大起大落。</div>'
+    +'<div class="tx">预测 '+w.fc+' = 最近均值 + 半步趋势；区间 = 预测 ± max(5, 0.9σ)，并裁剪到 0–100。</div>'
+    +'<div class="tk">区间是参考，不是承诺；任务越少，区间越宽。</div>';
   return '<div class="week"><div class="wkHead"><h3>本周解读 · This week</h3><span class="note">按任务类型 · 颜色同成绩册 Task Weights</span></div>'+
-    '<div class="wkGrid"><div class="wkBox"><h4>变化归因 Attribution</h4>'+deltaHtml+'</div>'+
-    '<div class="wkBox"><h4>稳定性与预测 Forecast <span class="wkInfo" tabindex="0">ⓘ</span></h4>'+fcHtml+'</div>'+
-    '<div class="wkBox"><h4>按任务类型 By task type</h4>'+(bars||'<div class="note">暂无已评分任务</div>')+'</div></div></div>';
+    '<div class="wkGrid">'+
+      '<div class="wkBox"><h4>变化归因 Attribution <span class="wkInfo" data-tip="'+esc(attrTip)+'">ⓘ</span></h4>'+deltaHtml+'</div>'+
+      '<div class="wkBox"><h4>稳定性与预测 Forecast <span class="wkInfo" data-tip="'+esc(fcTip)+'">ⓘ</span></h4>'+fcHtml+'</div>'+
+      '<div class="wkBox"><h4>按任务类型 By task type <span class="wkInfo" data-tip="'+esc(typeTip)+'">ⓘ</span></h4>'+(bars||'<div class="note">暂无已评分任务</div>')+'</div>'+
+    '</div></div>';
 }
 function missingRecent(st,days){
   const now=Date.now(); let n=0;
@@ -1176,7 +1202,12 @@ function renderCard(st){
     <div class="card">
       <div id="radarBox">${radar(st)}<div class="legend">${head}${activeMetrics.length===1&&!parentView?' <span><span class="dot" style="background:#9aa7b4"></span>class avg</span>':''} <span style="color:#8b949e">· 悬停科目名看该科逐项成绩</span></div></div>
       <div>
-        <table><tr><th>Section</th>${activeMetrics.map(m=>'<th>'+m+'</th>').join('')}</tr>${rowsHtml}</table>
+        <table><thead><tr><th>Section</th>${activeMetrics.map(m=>'<th>'+m+'</th>').join('')}</tr></thead>
+        <tbody>${rowsHtml}</tbody>
+        <tfoot><tr><td><b>Average 均分</b></td>${activeMetrics.map(m=>{
+          const vals=st.values[m].filter(v=>v!=null);
+          return '<td><b>'+(vals.length?Math.round(vals.reduce((a,b)=>a+b,0)/vals.length*10)/10:'—')+'</b></td>';
+        }).join('')}</tr></tfoot></table>
         <div class="note">${parentView?'<b>家长版：</b>只显示学生本人的分数与目标，不显示同伴对比。<br>每一项都可点开看任务证据。':'<b>分层：</b>G6–8 HF &gt; ECP &gt; CPA &gt; CP；G9 A1 &gt; A2 &gt; Main &gt; Basic；G10–12 AP &gt; ECP &gt; CP（英语 AP/ESL/EAL）。<br>初中学段按学科+分层出轴；高中按课程名出轴（同名课跨年级不等价）。<br>每项显示：分数 · 班级均分（avg）· 同班百分位（P）。'}</div>
       </div>
     </div>
@@ -1209,17 +1240,23 @@ function renderCard(st){
       showTip('<b>'+m+' · all sections (score / class avg)</b><table><tr><th>Section</th><th>Score</th><th>Avg</th></tr>'+rows+'</table>');};
     el.onmousemove=moveTip; el.onmouseleave=hideTip;
   });
-  document.querySelectorAll('.wkInfo').forEach(el=>{
-    el.onmouseenter=ev=>{
-      const w=weekStats(st), lo=Math.max(0,(w.fc??0)-w.band), hi=Math.min(100,(w.fc??0)+w.band);
-      const fmt=t=>t?new Date(t).toISOString().slice(0,10):'—';
-      const html='<b>稳定性与预测 说明</b>'
-        +'<div class="tx">依据：最近 '+w.nLast+' 次已评分任务（'+fmt(w.winFrom)+' → '+fmt(w.winTo)+'），当前口径 '+st.summary.metric+'。</div>'
-        +'<div class="tx">σ '+(w.sd==null?'—':w.sd.toFixed(1))+' = 这几次得分的标准差，用来衡量波动：<8 稳定、8–18 有波动、>18 大起大落。</div>'
-        +'<div class="tx">预测 '+w.fc+' 是把最近趋势外推半步；区间 '+lo+'–'+hi+' = 预测 ± max(5, 0.9σ)，并裁剪到 0–100。</div>'
-        +'<div class="tk">区间是参考，不是承诺；任务越少，区间越宽。</div>';
+  document.querySelectorAll('.tasks tr[data-id]').forEach(tr=>{
+    const id=tr.getAttribute('data-id');
+    tr.style.cursor='help';
+    tr.onmouseenter=()=>{
+      let t=null;
+      for(const l of st.labels){ const x=((st.sectionTasks||{})[l]||[]).find(y=>String(y.id)===id); if(x){t=x;break;} }
+      if(!t) return;
+      const meta=(D.taskMeta||{})[String(t.id)]||{};
+      let html='<b>'+esc(t.name)+'</b><div class="tm">'+esc(t.type||'Task')+' · '+fmtDate(t.end)+' · '+(t.pct==null?'未录分':t.pct+'%')+(t.score!=null?' · '+t.score+'/'+t.top:'')+'</div>';
+      if(meta.de) html+='<div class="tx">'+esc(String(meta.de).slice(0,300))+(String(meta.de).length>300?'…':'')+'</div>';
+      if(meta.rs&&meta.rs.length) html+='<div class="tk">附件：'+esc(meta.rs.join(' · '))+'</div>';
       showTip(html);
     };
+    tr.onmousemove=moveTip; tr.onmouseleave=hideTip;
+  });
+  document.querySelectorAll('.wkInfo').forEach(el=>{
+    el.onmouseenter=()=>showTip(el.getAttribute('data-tip')||'');
     el.onmousemove=moveTip; el.onmouseleave=hideTip;
   });
   document.querySelectorAll('#radarBox g.axis').forEach(g=>{
@@ -1232,9 +1269,11 @@ function renderCard(st){
   });
   document.querySelectorAll('#trendbox rect.bar').forEach(el=>{
     el.onmouseenter=ev=>{const r=JSON.parse(el.getAttribute('data-json'));const pos=r.items.filter(x=>!x.inf&&x.p>0), neg=r.items.filter(x=>x.inf);
-      const lines=['<b>'+r.k+'</b>']; if(pos.length) lines.push('Golden Key ('+r.gk+'): '+pos.slice(0,3).map(x=>x.ty+(x.de?' — '+x.de:'')).join('; '));
-      if(neg.length) lines.push('Infraction ('+r.inf+'): '+neg.slice(0,3).map(x=>x.ty+(x.de?' — '+x.de:'')).join('; '));
-      showTip(lines.join('<br>'));}; el.onmousemove=moveTip; el.onmouseleave=hideTip;
+      const bullets=(arr,cls)=>arr.slice(0,10).map(x=>'<div class="'+cls+'">• '+esc(x.ty||'')+(x.de?' — '+esc(x.de):'')+'</div>').join('');
+      let html='<b>'+esc(r.k)+'</b>';
+      if(pos.length) html+='<div class="tk" style="margin-top:3px">Golden Key ('+r.gk+')</div>'+bullets(pos,'tx');
+      if(neg.length) html+='<div class="tk" style="margin-top:3px">Infraction ('+r.inf+')</div>'+bullets(neg,'tx');
+      showTip(html);}; el.onmousemove=moveTip; el.onmouseleave=hideTip;
   });
   setupActions(st);
 }
