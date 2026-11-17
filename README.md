@@ -16,6 +16,11 @@ illustrated guide and configurable defaults it needs.
 - **Communication.** Bilingual parent drafts (copy or mail only — never sent), a printable
   student self-check, and a parent view without peer comparison.
 
+## Live demo
+
+An anonymised copy of the report the kit produces — same layout, names removed:
+<https://tiger20240331.github.io/Intschool/>
+
 ## Install
 
 - **From the plugin market:** add the index that lists this bundle, then install it from **Discover**.

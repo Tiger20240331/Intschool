@@ -24,6 +24,20 @@
 成绩册/日志/出勤并重绘（约 1–2 分钟，页面会显示“正在刷新数据”）。关闭终端窗口即停止服务；
 之后可双击 **`3_start_live_report.command`** 再次打开。
 
+## 分享给别人
+
+| 场景 | 做法 |
+|---|---|
+| 同一 Wi-Fi 的同事、家长 | 双击 `7_share_on_wifi.command`，把窗口里的 `http://192.168.x.x:8765/?code=…` 发过去；关闭窗口即停止分享 |
+| 公网、可被搜索引擎收录的网页 | 双击 `8_publish_web.command`：生成**匿名演示版** → 推送到 GitHub Pages → 通知 IndexNow；完成后输出 `https://<账号>.github.io/<仓库>/` |
+
+说明：
+
+- 联网发布默认走匿名版：学生姓名替换为 `Student 01`，家长邮箱、性别、生日、宿舍等字段删除，成绩保留用于展示版式。
+- `8_publish_web.command full` 才会发布真实数据，需要输入 `PUBLISH` 确认。GitHub Pages 没有任何访问控制，页面一旦被搜索引擎收录就无法彻底撤回，请先确认学校口径。
+- 发布地址由 `config.json` 的 `publish_repo` 决定；`tools/build_site.py` 可先在本地生成站点预览。
+- Google 收录需要在自己的 Search Console 里提交一次 `sitemap.xml`；Bing / Yandex 由 IndexNow 自动推送。
+
 ## 自动识别规则
 
 - **教学课程**：`/dropDown/teach/courses` 中排除
@@ -88,4 +102,4 @@ Student Log）、2–5 条学习体验洞察，以及 100–300 词个性化学�
 
 ## 更新
 
-替换 `tools/collect.py` 与 `tools/render_radar.py` 即可，`config.json` 与 token 不受影响。
+替换 `tools/` 下的脚本即可（`collect.py`、`render_radar.py`、`build_site.py`、`publish_web.py` 等），`config.json` 与 token 不受影响。

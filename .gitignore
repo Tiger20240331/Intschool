@@ -2,4 +2,5 @@
 kit/data/*.json
 kit/output/*
 kit/token.txt
+kit/indexnow.key
 !kit/data/.gitkeep
