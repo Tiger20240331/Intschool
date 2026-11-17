@@ -465,12 +465,13 @@ th{background:var(--bg)}
 .wkBox .big{font-size:24px;font-weight:700;line-height:1.1;color:var(--blue)}
 .wkBox .big.pos{color:var(--green)} .wkBox .big.neg{color:var(--red)} .wkBox .big.muted{color:#9aa7b4}
 .wkBox .note{font-size:9px;color:#57606a;line-height:1.45}
+.wkInfo{cursor:help;color:#1f4e79;font-size:10px;margin-left:2px;border:1px solid #d6e0ea;border-radius:50%;padding:0 4px;background:#fff}
 .wkBox .chips{display:flex;flex-wrap:wrap;gap:4px;margin-top:4px}
 .wk{font-size:8.6px;border:1px solid #d6e0ea;border-radius:9px;padding:1px 6px;background:#fff;white-space:nowrap}
 .wk.up{color:#1a7f37;border-color:#bfe0c4} .wk.down{color:#c00000;border-color:#f0c0c0}
 .tbar{display:flex;align-items:center;gap:5px;font-size:8.8px;margin:2px 0}
 .tbar .tk2{width:36px;color:#57606a} .tbar .tb{flex:1;height:7px;background:#eef2f6;border-radius:4px;overflow:hidden}
-.tbar .tb i{display:block;height:100%;background:#1f4e79}
+.tbar .tb i{display:block;height:100%;background:#1f4e79;border:1px solid rgba(0,0,0,.12)}
 .tbar .tv{width:30px;text-align:right} .tbar .tn{width:22px;color:#8b949e;text-align:right}
 .canary{margin:6px 0 0;background:#fff4e5;border-left:4px solid #e8a33d;padding:5px 9px;border-radius:4px;font-size:9.5px;color:#7a4b00}
 .queue{font-size:10.5px;margin-top:6px}
@@ -859,7 +860,10 @@ function weekStats(st){
   }
   per.sort((x,y)=>y.d-x.d);
   const scored=all.filter(t=>t.pct!=null);
-  const last=scored.slice(-6).map(t=>t.pct);
+  const lastTasks=scored.slice(-6);
+  const last=lastTasks.map(t=>t.pct);
+  const winFrom=lastTasks.length?lastTasks[0].end:null;
+  const winTo=lastTasks.length?lastTasks[lastTasks.length-1].end:null;
   const m=last.length?last.reduce((a,b)=>a+b,0)/last.length:null;
   const sd=last.length>1?Math.sqrt(last.reduce((a,b)=>a+(b-m)*(b-m),0)/(last.length-1)):null;
   let drift=0;
@@ -876,7 +880,7 @@ function weekStats(st){
   }
   const typeRows=Object.entries(types).map(([k,v])=>({k:k,n:Math.max(1,Object.keys(v.ids).length),m:Math.round(v.pcts.reduce((a,b)=>a+b,0)/v.pcts.length)}))
     .sort((a,b)=>b.n-a.n).slice(0,8);
-  return {delta:delta, per:per, mean:m, sd:sd, fc:fc, band:band, types:typeRows, n1:w1.length, n0:w0.length};
+  return {delta:delta, per:per, mean:m, sd:sd, fc:fc, band:band, types:typeRows, n1:w1.length, n0:w0.length, nLast:lastTasks.length, winFrom:winFrom, winTo:winTo};
 }
 let TYPE_FULL={};
 function rememberType(name){ const k=typeLabel(name); if(name && !TYPE_FULL[k]) TYPE_FULL[k]=name; }
@@ -884,10 +888,15 @@ function typeLabel(name){
   const x=String(name||'').toLowerCase();
   if(!x) return 'Task';
   if(x.indexOf('homework')>=0) return 'HW';
+  if(x.indexOf('observation')>=0) return 'IO';
   if(x.indexOf('in-class')>=0||x.indexOf('classwork')>=0) return 'IA';
+  if(x.indexOf('cumulative')>=0) return 'TC';
   if(x.indexOf('quiz')>=0) return 'Quiz';
-  if(x.indexOf('lab')>=0||x.indexOf('practical')>=0||x.indexOf('experiment')>=0||x.indexOf('project')>=0) return 'Lab';
-  if(x.indexOf('test')>=0||x.indexOf('exam')>=0||x.indexOf('cumulative')>=0) return 'Test';
+  if(x.indexOf('projects and lab')>=0) return 'Lab';
+  if(x.indexOf('lab')>=0||x.indexOf('practical')>=0||x.indexOf('experiment')>=0) return 'Lab';
+  if(x.indexOf('project')>=0) return 'Project';
+  if(x.indexOf('test')>=0||x.indexOf('exam')>=0) return 'Test';
+  if(x.indexOf('participation')>=0) return 'PA';
   if(x.indexOf('swim')>=0) return 'Swim';
   return String(name).replace(/[^A-Za-z ]/g,'').trim().split(/\s+/)[0].slice(0,10) || 'Task';
 }
@@ -904,10 +913,13 @@ function weekBlock(st){
     ? '<div class="big muted">—</div>'
     : (function(){const lo=Math.max(0,w.fc-w.band), hi=Math.min(100,w.fc+w.band);
         return '<div class="big">'+w.fc+'</div><div class="note">预测 '+st.summary.metric+' 区间 '+lo+'–'+hi+' · σ '+(w.sd==null?'—':w.sd.toFixed(1))+' ('+volTxt+')</div>';})()+ (w.fc<85?'<div class="note">距 A(85) 还差 '+(85-w.fc)+' 分</div>':'<div class="note">已在 A 线以上</div>');
-  const bars=w.types.map(t=>'<div class="tbar" title="'+esc(TYPE_FULL[t.k]||t.k)+'"><span class="tk2">'+t.k+'</span><span class="tb"><i style="width:'+t.m+'%"></i></span><span class="tv">'+t.m+'%</span><span class="tn">×'+t.n+'</span></div>').join('');
-  return '<div class="week"><div class="wkHead"><h3>本周解读 · This week</h3><span class="note">按任务类型权重（H10/IA15/Q15/PL20/Test40）</span></div>'+
+  const bars=w.types.map(t=>{
+    const full=TYPE_FULL[t.k]||t.k, col=typeColor({type:full});
+    return '<div class="tbar" title="'+esc(full)+' · '+t.n+' 项"><span class="tk2">'+t.k+'</span><span class="tb"><i style="width:'+t.m+'%;background:'+col+'"></i></span><span class="tv">'+t.m+'%</span><span class="tn">×'+t.n+'</span></div>';
+  }).join('');
+  return '<div class="week"><div class="wkHead"><h3>本周解读 · This week</h3><span class="note">按任务类型 · 颜色同成绩册 Task Weights</span></div>'+
     '<div class="wkGrid"><div class="wkBox"><h4>变化归因 Attribution</h4>'+deltaHtml+'</div>'+
-    '<div class="wkBox"><h4>稳定性与预测 Forecast</h4>'+fcHtml+'</div>'+
+    '<div class="wkBox"><h4>稳定性与预测 Forecast <span class="wkInfo" tabindex="0">ⓘ</span></h4>'+fcHtml+'</div>'+
     '<div class="wkBox"><h4>按任务类型 By task type</h4>'+(bars||'<div class="note">暂无已评分任务</div>')+'</div></div></div>';
 }
 function missingRecent(st,days){
@@ -1195,6 +1207,19 @@ function renderCard(st){
   document.querySelectorAll('#radarBox .legend span[data-m]').forEach(el=>{
     el.onmouseenter=ev=>{const m=el.dataset.m; const rows=st.labels.map((a,i)=>{const v=st.values[m][i];return '<tr><td>'+a+'</td><td>'+(v==null?'—':v+'%')+'</td><td>'+(match(st,st.class,a,m)??'—')+'</td></tr>'}).join('');
       showTip('<b>'+m+' · all sections (score / class avg)</b><table><tr><th>Section</th><th>Score</th><th>Avg</th></tr>'+rows+'</table>');};
+    el.onmousemove=moveTip; el.onmouseleave=hideTip;
+  });
+  document.querySelectorAll('.wkInfo').forEach(el=>{
+    el.onmouseenter=ev=>{
+      const w=weekStats(st), lo=Math.max(0,(w.fc??0)-w.band), hi=Math.min(100,(w.fc??0)+w.band);
+      const fmt=t=>t?new Date(t).toISOString().slice(0,10):'—';
+      const html='<b>稳定性与预测 说明</b>'
+        +'<div class="tx">依据：最近 '+w.nLast+' 次已评分任务（'+fmt(w.winFrom)+' → '+fmt(w.winTo)+'），当前口径 '+st.summary.metric+'。</div>'
+        +'<div class="tx">σ '+(w.sd==null?'—':w.sd.toFixed(1))+' = 这几次得分的标准差，用来衡量波动：<8 稳定、8–18 有波动、>18 大起大落。</div>'
+        +'<div class="tx">预测 '+w.fc+' 是把最近趋势外推半步；区间 '+lo+'–'+hi+' = 预测 ± max(5, 0.9σ)，并裁剪到 0–100。</div>'
+        +'<div class="tk">区间是参考，不是承诺；任务越少，区间越宽。</div>';
+      showTip(html);
+    };
     el.onmousemove=moveTip; el.onmouseleave=hideTip;
   });
   document.querySelectorAll('#radarBox g.axis').forEach(g=>{
