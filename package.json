@@ -1,6 +1,6 @@
 {
   "name": "radar-on-intschool-skill",
-  "version": "1.1.16",
+  "version": "1.1.17",
   "description": "Radar on Intschool: a one-page IntSchool student radar report card skill for any subject teacher, tutor, coordinator or administrator.",
   "type": "module",
   "main": "index.js",
@@ -14,6 +14,7 @@
     "cordis.patch.yml",
     "skills",
     "kit",
+    "share",
     "locale",
     "docs",
     "icon.svg",
