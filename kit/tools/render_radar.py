@@ -455,8 +455,8 @@ th{background:var(--bg)}
 .tooltip .tm{color:#9db8d2}
 .tooltip .tx{margin-top:3px;color:#e6edf3}
 .tooltip .tk{margin-top:3px;color:#b7c6d4;font-size:9.5px}
-.hoverPanel{position:fixed;display:none;background:#fff;border:1px solid var(--line);border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.15);padding:8px 10px;z-index:98;font-size:10px;max-width:420px}
-.cpScroll{overflow-x:auto;overflow-y:hidden;max-width:390px;padding-bottom:2px}
+.hoverPanel{position:fixed;display:none;background:#fff;border:1px solid var(--line);border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.15);padding:10px 12px;z-index:98;font-size:10px;max-width:min(840px,95vw)}
+.cpScroll{overflow-x:auto;overflow-y:hidden;max-width:min(790px,90vw);padding-bottom:2px}
 .cpScroll svg{display:block}
 .cpLegend{display:flex;flex-wrap:wrap;gap:6px;margin-top:4px;font-size:8.5px;color:#57606a}
 .cpLegend .lg{display:flex;align-items:center;gap:3px}
@@ -496,8 +496,10 @@ th{background:var(--bg)}
 .wkBox .big{font-size:24px;font-weight:700;line-height:1.1;color:var(--blue)}
 .wkBox .big.pos{color:var(--green)} .wkBox .big.neg{color:var(--red)} .wkBox .big.muted{color:#9aa7b4}
 .wkBox .note{font-size:9px;color:#57606a;line-height:1.45}
-.typeSelWrap{margin:2px 0 4px}
-#typeSel{font-size:9px;padding:1px 4px;border:1px solid var(--line);border-radius:4px;max-width:100%}
+.typeHead{display:flex;align-items:center;justify-content:space-between;gap:6px;margin:0 0 3px}
+.typeHead h4{margin:0;white-space:nowrap}
+.typeSelWrap{margin:0;flex:0 0 auto}
+#typeSel{font-size:9px;padding:1px 4px;border:1px solid var(--line);border-radius:4px;max-width:150px}
 .tbar .tw{font-style:normal;color:#8b949e;font-size:7.5px;margin-left:2px}
 .wkInfo{cursor:help;color:#1f4e79;font-size:10px;margin-left:2px;border:1px solid #d6e0ea;border-radius:50%;padding:0 4px;background:#fff}
 .wkBox .chips{display:flex;flex-wrap:wrap;gap:4px;margin-top:4px}
@@ -557,6 +559,7 @@ body.privacy .pname{filter:blur(0);}
  body.selfprint .selfPanel{position:static;display:block!important;inset:auto;border:0;box-shadow:none;padding:0}
  .week{margin-top:5px;padding-top:4px}
  .wkBox .big{font-size:12px} .wkBox .note{font-size:6.5px} .wkBox h4{font-size:7px}
+ .typeSelWrap{display:none} .typeHead{display:block}
  .canary{font-size:7px}
  .tasks{margin-top:5px;padding-top:4px}
  .tasksHead h3{font-size:10px}
@@ -711,7 +714,7 @@ function coursePanel(st,i){
     return meta.it!==false;
   }).sort((a,b)=>((b.t.end||0)-(a.t.end||0)));
   const shown=rows.slice(0,300);
-  const W=Math.max(300,shown.length*24+40),H=200,padL=22,padR=6,top=24,bot=34;
+  const W=Math.max(300,shown.length*24+40),H=340,padL=22,padR=6,top=24,bot=34;
   const bw=(W-padL-padR)/Math.max(1,shown.length), base=H-bot, h100=base-top;
   const scored=shown.filter(r=>r.t.pct!=null).map(r=>r.t.pct);
   const avg=scored.length?Math.round(scored.reduce((a,b)=>a+b,0)/scored.length):null;
@@ -1005,9 +1008,9 @@ function weekBlock(st){
     '<div class="wkGrid">'+
       '<div class="wkBox"><h4>变化归因 Attribution <span class="wkInfo" data-tip="'+esc(attrTip)+'">ⓘ</span></h4>'+deltaHtml+'</div>'+
       '<div class="wkBox"><h4>稳定性与预测 Forecast <span class="wkInfo" data-tip="'+esc(fcTip)+'">ⓘ</span></h4>'+fcHtml+'</div>'+
-      '<div class="wkBox"><h4>按任务类型 By task type <span class="wkInfo" data-tip="'+esc(typeTip)+'">ⓘ</span></h4>'+
+      '<div class="wkBox"><div class="typeHead"><h4>按任务类型 By task type <span class="wkInfo" data-tip="'+esc(typeTip)+'">ⓘ</span></h4>'+
       '<div class="typeSelWrap"><select id="typeSel">'+['<option value="">全部科目 All subjects</option>']
-        .concat(st.labels.map(l=>'<option value="'+esc(l)+'"'+(l===typeCourse?' selected':'')+'>'+esc(l)+'</option>')).join('')+'</select></div>'+
+        .concat(st.labels.map(l=>'<option value="'+esc(l)+'"'+(l===typeCourse?' selected':'')+'>'+esc(l)+'</option>')).join('')+'</select></div></div>'+
       (bars||'<div class="note">该科目暂无已评分任务</div>')+'</div>'+
     '</div></div>';
 }
