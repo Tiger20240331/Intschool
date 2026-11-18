@@ -405,6 +405,9 @@ h1{margin:0;font-size:17px;color:var(--blue)}
 .btn{border:1px solid var(--blue);background:#fff;color:var(--blue);border-radius:6px;padding:5px 10px;font-size:11.5px;cursor:pointer}
 .btn.primary{background:var(--blue);color:#fff}
 .btn:disabled{opacity:.5;cursor:wait}
+.btn.on{background:var(--blue);color:#fff}
+body.noside .wrap{grid-template-columns:1fr}
+body.noside aside{display:none}
 .sharePanel{display:none;position:absolute;right:0;top:34px;background:#fff;border:1px solid var(--line);border-radius:8px;box-shadow:0 6px 20px rgba(0,0,0,.12);padding:9px;z-index:60;min-width:220px}
 .sharePanel button{display:block;width:100%;text-align:left;margin:3px 0;padding:7px 9px;border:1px solid var(--line);border-radius:6px;background:#fff;font-size:11.5px;cursor:pointer}
 .sharePanel small{color:#57606a;display:block;margin-top:5px;line-height:1.4;font-size:10px}
@@ -578,6 +581,7 @@ body.privacy .pname{filter:blur(0);}
     <div class="meta">Generated __GENERATED__ · __NSTUD__ students · __TEACHER__</div>
   </div>
   <div class="actions">
+    <button class="btn" id="sideBtn" title="隐藏 / 显示搜索栏 · Hide or show the search sidebar"><span id="sideIco">◀</span> 搜索 Search</button>
     <button class="btn teacherOnly" id="queueBtn">本周队列 Queue</button>
     <button class="btn teacherOnly" id="heatBtn">教学优先 Priorities</button>
     <button class="btn teacherOnly" id="commsBtn">沟通 Comms</button>
@@ -1400,6 +1404,20 @@ function setupActions(st){
   document.getElementById('emailBtn').onclick=()=>{const text=(privacy?'Learner · '+st.class:st.name)+' · '+st.summary.metric+'\n'+st.summary.en; location.href='mailto:?subject='+encodeURIComponent('Radar Report Card')+'&body='+encodeURIComponent(text);};
 
 }
+const sideBtn=document.getElementById('sideBtn'), sideIco=document.getElementById('sideIco');
+function applySide(hidden){
+  document.body.classList.toggle('noside',hidden);
+  sideBtn.classList.toggle('on',hidden);
+  sideIco.textContent = hidden ? '▶' : '◀';
+  sideBtn.title = hidden ? '显示搜索栏 · Show the search sidebar' : '隐藏搜索栏 · Hide the search sidebar';
+  try{localStorage.setItem('radar_side_hidden',hidden?'1':'0')}catch(e){}
+}
+sideBtn.onclick=()=>{
+  const hidden=!document.body.classList.contains('noside');
+  applySide(hidden);
+  if(!hidden) document.getElementById('q').focus();
+};
+try{ if(localStorage.getItem('radar_side_hidden')==='1') applySide(true); }catch(e){}
 document.getElementById('q').addEventListener('input',()=>renderList());
 clsSel.addEventListener('change',()=>{current=null;renderList()});
 renderList();
