@@ -1,12 +1,12 @@
 #!/bin/bash
-# Radar on Intschool — one command that keeps a colleague's copy current.
+# Radar on Intschool — installer / updater for a colleague's Mac.
 #
-#   double-click / bash share/radar_colleague.command          first run: clone, then update
-#   bash share/radar_colleague.command --auto                  also install a daily 07:30 update job
-#   bash share/radar_colleague.command --check                 only report local vs remote version
+# Double-click this file. First run: downloads the skill into ~/RadarSkill and sets up a
+# daily automatic update. Run it again any time to update immediately.
 #
-# The clone lives at $RADAR_HOME (default ~/RadarSkill) and is symlinked into DSH, so
-# "updating" is just `git pull` — no tarballs, no re-downloading the whole package.
+#   --no-auto   skip the daily update job
+#   --check     only report the installed version
+#   --quiet     log-only mode (used by the daily job)
 
 set -u
 REPO_URL="${RADAR_REPO:-https://github.com/Tiger20240331/Intschool.git}"
@@ -15,51 +15,70 @@ MODE="${1:-}"
 PLIST="$HOME/Library/LaunchAgents/com.radar.intschool.update.plist"
 
 version_of() { /usr/bin/python3 -c "import json,sys;print(json.load(open(sys.argv[1]))['version'])" "$1/package.json" 2>/dev/null || echo "?"; }
-say() { [ "${2:-}" = "quiet" ] || printf '%s\n' "$1"; }
+line() { [ "$MODE" = "--quiet" ] || printf '%s\n' "$1"; }
 
 if ! command -v git >/dev/null 2>&1; then
-  echo "git not found. Run: xcode-select --install   (then try again)"
+  cat <<'EOF'
+This Mac needs the Apple command line tools once (it installs git).
+
+  1. In Terminal, run:  xcode-select --install
+  2. Click "Install" in the window that pops up, wait until it finishes.
+  3. Double-click this file again.
+EOF
+  read -r -p "Press Enter to close…" _
   exit 1
 fi
 
+# ---------- first install -------------------------------------------------------
 if [ ! -d "$TARGET/.git" ]; then
-  echo "== first install =="
+  line "Downloading the Radar skill, please wait…"
   mkdir -p "$(dirname "$TARGET")"
-  git clone --quiet --depth 1 "$REPO_URL" "$TARGET" || { echo "clone failed - check the network / repo URL"; exit 1; }
-  echo "cloned $(version_of "$TARGET") into $TARGET"
-  cat <<NEXT
+  if ! git clone --quiet --depth 1 "$REPO_URL" "$TARGET" 2>/dev/null; then
+    echo "The download failed. Check the internet connection, then double-click this file again."
+    read -r -p "Press Enter to close…" _
+    exit 1
+  fi
+  ver="$(version_of "$TARGET")"
+  printf '%s\n' "$TARGET" | pbcopy 2>/dev/null || true
+  cat <<DONE
 
-One manual step, once per machine:
-  DSH -> Plugins -> install from path -> $TARGET
-  (or: Plugins -> Add plugin -> pick the folder)
+✅ Installed version $ver
+   The folder is copied to your clipboard.
 
-After that, just run this file again (or let the daily job do it) to update.
-NEXT
-  [ "$MODE" = "--auto" ] || exit 0
+Two clicks left, once only:
+
+  1. Open DeepSeek Harness
+  2. Plugins  →  install from path  →  paste (⌘V)  →  choose "Radar on Intschool"
+
+From now on this file updates itself — nothing else to download or send.
+DONE
 else
+  # ---------- update ----------------------------------------------------------
   before="$(version_of "$TARGET")"
   if [ "$MODE" = "--check" ]; then
-    remote="$(git -C "$TARGET" ls-remote --tags --refs origin 'v*' | awk -F/ '{print $NF}' | sort -V | tail -1)"
+    remote="$(git -C "$TARGET" ls-remote --tags --refs origin 'v*' 2>/dev/null | awk -F/ '{print $NF}' | sort -V | tail -1)"
     echo "installed: $before"
     echo "latest   : ${remote:-unknown}"
     exit 0
   fi
   if ! git -C "$TARGET" pull --ff-only --quiet 2>/dev/null; then
-    echo "update failed - the folder has local edits or the network is down:"
-    echo "  git -C \"$TARGET\" status"
+    line "Could not update just now (offline, or the folder was edited)."
+    line "Open Terminal and run:  git -C \"$TARGET\" status"
+    [ "$MODE" = "--quiet" ] || read -r -p "Press Enter to close…" _
     exit 1
   fi
   after="$(version_of "$TARGET")"
   if [ "$before" = "$after" ]; then
-    [ "$MODE" = "--quiet" ] || echo "already current ($before)"
+    line "Already up to date (version $after)."
   else
-    echo "updated $before -> $after"
-    [ "$MODE" = "--quiet" ] || echo "Reload the plugin in DSH (disable then enable it) or restart DSH to pick it up."
+    echo "Updated $before → $after"
+    line "In DeepSeek Harness: Plugins → switch Radar off and on again (or restart the app)."
   fi
+  [ "$MODE" = "--quiet" ] || read -r -p "Press Enter to close…" _
 fi
 
-# --- optional daily auto-update ------------------------------------------------
-if [ "$MODE" = "--auto" ]; then
+# ---------- daily automatic update ----------------------------------------------
+if [ "$MODE" != "--no-auto" ] && [ "$MODE" != "--check" ] && [ "$MODE" != "--quiet" ]; then
   mkdir -p "$(dirname "$PLIST")"
   cat > "$PLIST" <<PLISTEOF
 <?xml version="1.0" encoding="UTF-8"?>
@@ -79,6 +98,15 @@ if [ "$MODE" = "--auto" ]; then
 </dict></plist>
 PLISTEOF
   launchctl unload "$PLIST" 2>/dev/null
-  launchctl load -w "$PLIST" 2>/dev/null && echo "daily 07:30 update installed -> $PLIST" \
-    || echo "could not load the daily job; the file is at $PLIST"
+  if launchctl load -w "$PLIST" 2>/dev/null; then
+    echo
+    echo "Automatic updates: ON — checked daily at 07:30, silent unless the version changes."
+  else
+    echo
+    echo "Automatic updates could not be scheduled. The file is at: $PLIST"
+  fi
+fi
+
+if [ "$MODE" != "--quiet" ] && [ "$MODE" != "--check" ]; then
+  read -r -p "Press Enter to close…" _
 fi
